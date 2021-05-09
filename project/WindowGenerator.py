@@ -115,7 +115,7 @@ class WindowGenerator():
             self._example = result
         return result
 
-    def plot(self, model=None, plot_col='num_transactions', max_subplots=3):
+    def plot(self, model=None, plot_col='num_transactions', max_subplots=3, save_path=None):
         inputs, labels = self.example
         plt.figure(figsize=(12, 8))
         plot_col_index = self.column_indices[plot_col]
@@ -146,12 +146,17 @@ class WindowGenerator():
                 plt.legend()
 
         plt.xlabel('Time [h]')
+        if save_path:
+            plt.savefig(save_path)
         plt.show()
 
-    def plot_splits(self):
-        plt.plot(self.train_df[self.label_columns[0]])
-        plt.plot(self.val_df[self.label_columns[0]])
-        plt.plot(self.test_df[self.label_columns[0]])
+    def plot_splits(self, save_path=None):
+        plt.plot(self.train_df[self.label_columns[0]], label='train')
+        plt.plot(self.val_df[self.label_columns[0]], label='val')
+        plt.plot(self.test_df[self.label_columns[0]], label='test')
+        plt.legend()
+        if save_path:
+            plt.savefig(save_path)
         plt.show()
 
     def __repr__(self):

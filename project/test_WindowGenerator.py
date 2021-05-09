@@ -14,8 +14,8 @@ multi_window = WindowGenerator(bitcoin,
                                label_width=OUT_STEPS,
                                shift=OUT_STEPS,
                                label_columns=['num_transactions'])
-multi_window.plot_splits()
-multi_window.plot()
+multi_window.plot_splits('figures/test_splits.jpg')
+multi_window.plot(save_path='figures/test_multi_window.jpg')
 multi_window
 
 @pytest.mark.parametrize("fname", [bitcoin])
