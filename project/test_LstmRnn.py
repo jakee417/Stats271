@@ -11,7 +11,7 @@ save_img = 'figures/test_lstm_rnn.jpg'
 OUT_STEPS = 24
 
 
-@pytest.mark.skip(reason='too long')
+@pytest.mark.skip(reason='skipping for now')
 @pytest.mark.parametrize("fname", [bitcoin])
 def test_train(fname):
     multi_window = WindowGenerator(fname,
@@ -42,7 +42,7 @@ def test_train(fname):
 
 @pytest.mark.parametrize("fname", [bitcoin])
 @pytest.mark.parametrize("model_path", ['saved/LstmRnn'])
-def test_load(model_path, fname):
+def test_load_save(model_path, fname):
     multi_window = WindowGenerator(fname,
                                    input_width=72,
                                    label_width=OUT_STEPS,
