@@ -1,23 +1,30 @@
 from WindowGenerator import WindowGenerator
+import pytest
 
-fname = 'bitcoin_query.csv'
-w1 = WindowGenerator(fname,
-                     shift=5,
-                     label_width=5,
-                     label_columns=['num_transactions'])
-
-for example_inputs, example_labels in w1.train.take(1):
-  print(f'Inputs shape (batch, time, features): {example_inputs.shape}')
-  print(f'Labels shape (batch, time, features): {example_labels.shape}')
-
-w1.plot()
+bitcoin = 'data/bitcoin_query.csv'
+bitcoincash = 'data/bitcoincash_query.csv'
+dash = 'data/dash_query.csv'
+dogecoin = 'data/dogecoin_query.csv'
+litecoin = 'data/litecoin_query.csv'
+zcash = 'data/zcash_query.csv'
 
 
-OUT_STEPS = 24
-multi_window = WindowGenerator(fname,
-                               input_width=24,
-                               label_width=OUT_STEPS,
-                               shift=OUT_STEPS)
+@pytest.mark.parametrize("fname", [bitcoin])
+def basic_loading(fname):
+    w1 = WindowGenerator(fname,
+                         shift=5,
+                         label_width=5,
+                         label_columns=['num_transactions'])
+    w1.plot()
 
-multi_window.plot()
-multi_window
+
+@pytest.mark.parametrize("fname", [bitcoin])
+def multi_window(fname):
+    OUT_STEPS = 24
+    multi_window = WindowGenerator(dash,
+                                   input_width=24,
+                                   label_width=OUT_STEPS,
+                                   shift=OUT_STEPS)
+    
+    multi_window.plot()
+    multi_window

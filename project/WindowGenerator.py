@@ -47,6 +47,7 @@ class WindowGenerator():
     
     def read_data(self):
       self.df = pd.read_csv(self.fname)
+      # hard-coded for our datasets
       time_cats = ['hour', 'month', 'day', 'year']
       self.df.index = pd.to_datetime(self.df[time_cats])
       timestamp_s = self.df.index.map(datetime.datetime.timestamp)
