@@ -1,25 +1,17 @@
 import tensorflow as tf
-from WindowGenerator import WindowGenerator
-
-bitcoin = 'data/bitcoin_query.csv'
-OUT_STEPS = 24
-multi_window = WindowGenerator(bitcoin,
-                               input_width=72,
-                               label_width=OUT_STEPS,
-                               shift=OUT_STEPS,
-                               label_columns=['num_transactions'])
-num_features = multi_window.num_features
 
 
 class LstmRnn(tf.keras.Model):
 
-    def __init__(self, units=32, out_steps=24):
+    def __init__(self, num_features, units=32, out_steps=24):
         super().__init__()
         self.out_steps = out_steps
         self.units = units
+        # TODO: Add Time2Vec https://towardsdatascience.com/time2vec-for-time-series-features-encoding-a03a4f3f937e
         self.lstm_cell = tf.keras.layers.LSTMCell(units)
         # Also wrap the LSTMCell in an RNN to simplify the `warmup` method.
         self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell, return_state=True)
+        # TODO: Add TFP layers after self.lstm_rnn
         self.dense = tf.keras.layers.Dense(num_features)
 
     def warmup(self, inputs):
@@ -58,11 +50,29 @@ class LstmRnn(tf.keras.Model):
         predictions = tf.transpose(predictions, [1, 0, 2])
         return predictions
 
+    @property
+    def model(self):
+        return self.keras_model
+
     @staticmethod
-    def compile_and_fit(model, window, patience=2, max_epochs=20):
+    def compile_and_fit(model,
+                        window,
+                        checkpoint_path=None,
+                        save_path=None,
+                        patience=2,
+                        max_epochs=20):
+        cp = []
+
         early_stopping = tf.keras.callbacks.EarlyStopping(monitor='val_loss',
                                                           patience=patience,
                                                           mode='min')
+        cp.append(early_stopping)
+
+        if checkpoint_path:
+            cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                             save_weights_only=True,
+                                                             verbose=1)
+            cp.append(cp_callback)
 
         model.compile(loss=tf.losses.MeanSquaredError(),
                       optimizer=tf.optimizers.Adam(),
@@ -70,18 +80,9 @@ class LstmRnn(tf.keras.Model):
 
         history = model.fit(window.train, epochs=max_epochs,
                             validation_data=window.val,
-                            callbacks=[early_stopping])
+                            callbacks=cp)
+
+        if save_path:
+            model.save(save_path)
+
         return history
-
-
-feedback_model = LstmRnn(units=32, out_steps=OUT_STEPS)
-print('Output shape (batch, time, features): ', feedback_model(multi_window.example[0]).shape)
-
-history = feedback_model.compile_and_fit(feedback_model, multi_window)
-
-multi_val_performance = dict()
-multi_performance = dict()
-
-multi_val_performance['AR LSTM'] = feedback_model.evaluate(multi_window.val)
-multi_performance['AR LSTM'] = feedback_model.evaluate(multi_window.test, verbose=0)
-multi_window.plot(feedback_model)
