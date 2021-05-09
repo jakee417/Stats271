@@ -8,6 +8,15 @@ dogecoin = 'data/dogecoin_query.csv'
 litecoin = 'data/litecoin_query.csv'
 zcash = 'data/zcash_query.csv'
 
+OUT_STEPS = 24
+multi_window = WindowGenerator(bitcoin,
+                               input_width=24,
+                               label_width=OUT_STEPS,
+                               shift=OUT_STEPS,
+                               label_columns=['num_transactions'])
+multi_window.plot_splits()
+multi_window.plot()
+multi_window
 
 @pytest.mark.parametrize("fname", [bitcoin])
 def basic_loading(fname):
