@@ -21,10 +21,11 @@ def basic_loading(fname):
 @pytest.mark.parametrize("fname", [bitcoin])
 def multi_window(fname):
     OUT_STEPS = 24
-    multi_window = WindowGenerator(dash,
+    multi_window = WindowGenerator(bitcoin,
                                    input_width=24,
                                    label_width=OUT_STEPS,
-                                   shift=OUT_STEPS)
-    
-    multi_window.plot()
+                                   shift=OUT_STEPS,
+                                   label_columns=['num_transactions'])
+    multi_window.plot_splits('figures/test_splits.jpg')
+    multi_window.plot(save_path='figures/test_multi_window.jpg')
     multi_window
