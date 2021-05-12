@@ -13,15 +13,20 @@ class WindowGenerator():
                  input_width=24,
                  label_width=1,
                  shift=1,
-                 label_columns=None):
+                 label_columns=None,
+                 resample_frequency='60T',
+                 standardize=True):
+        self.label_columns = label_columns
+        self.resample = resample_frequency
+        self.standardize = standardize
         # Read in data.
         self.fname = fname
-        self.read_data()
-        self.split()
-        self.standardize()
+        self._read_data()
+        self._split()
+        if self.standardize:
+            self._standardize()
 
         # Work out the label column indices.
-        self.label_columns = label_columns
         if label_columns is not None:
             self.label_columns_indices = {name: i for i, name in
                                           enumerate(label_columns)}
@@ -42,16 +47,23 @@ class WindowGenerator():
         self.labels_slice = slice(self.label_start, None)
         self.label_indices = np.arange(self.total_window_size)[self.labels_slice]
 
-    def read_data(self):
+    def _read_data(self):
         self.df = pd.read_csv(self.fname)
         time_cats = ['hour', 'month', 'day', 'year']
         self.df.index = pd.to_datetime(self.df[time_cats])
         timestamp_s = self.df.index.map(datetime.datetime.timestamp)
         self.df['timestamp'] = timestamp_s
         self.df = self.df.drop(labels=time_cats, axis=1)
+        self.df = self.df[self.label_columns]
         # TODO: Add resample
+        if self.resample:
+            self.df = self.df.resample(self.resample).apply(self._aggregate)
 
-    def split(self):
+    @staticmethod
+    def _aggregate(x):
+        return np.percentile(x, 90) if len(x) > 0 else 0
+
+    def _split(self):
         self.column_indices = {name: i for i, name in enumerate(self.df.columns)}
         self.n = len(self.df)
         self.train_df = self.df[0:int(self.n * 0.7)]
@@ -59,7 +71,7 @@ class WindowGenerator():
         self.test_df = self.df[int(self.n * 0.9):]
         self.num_features = self.df.shape[1]
 
-    def standardize(self):
+    def _standardize(self):
         self.train_mean = self.train_df.mean()
         self.train_std = self.train_df.std()
         self.train_df = (self.train_df - self.train_mean) / self.train_std

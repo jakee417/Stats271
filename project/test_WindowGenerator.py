@@ -10,7 +10,7 @@ zcash = 'data/zcash_query.csv'
 
 
 @pytest.mark.parametrize("fname", [bitcoin])
-def basic_loading(fname):
+def test_basic_loading(fname):
     w1 = WindowGenerator(fname,
                          shift=5,
                          label_width=5,
@@ -19,13 +19,14 @@ def basic_loading(fname):
 
 
 @pytest.mark.parametrize("fname", [bitcoin])
-def multi_window(fname):
+def test_multi_window(fname):
     OUT_STEPS = 24
-    multi_window = WindowGenerator(bitcoin,
+    multi_window = WindowGenerator(fname,
                                    input_width=24,
                                    label_width=OUT_STEPS,
                                    shift=OUT_STEPS,
-                                   label_columns=['num_transactions'])
+                                   label_columns=['num_transactions'],
+                                   resample_frequency='D')
     multi_window.plot_splits('figures/test_splits.jpg')
     multi_window.plot(save_path='figures/test_multi_window.jpg')
     multi_window
