@@ -16,9 +16,12 @@ class WindowGenerator():
                  label_columns=None,
                  resample_frequency='60T',
                  standardize=True):
+        # Member attributes
         self.label_columns = label_columns
+        self.covariate_columns = None
         self.resample = resample_frequency
         self.standardize = standardize
+
         # Read in data.
         self.fname = fname
         self._read_data()
@@ -52,10 +55,16 @@ class WindowGenerator():
         time_cats = ['hour', 'month', 'day', 'year']
         self.df.index = pd.to_datetime(self.df[time_cats])
         timestamp_s = self.df.index.map(datetime.datetime.timestamp)
+        # TODO: Incorporate time
         self.df['timestamp'] = timestamp_s
         self.df = self.df.drop(labels=time_cats, axis=1)
         self.df = self.df[self.label_columns]
-        # TODO: Add resample
+        self.df['covariates'] = self.df[self.label_columns]
+
+        # FixMe: Fix this hack
+        self.covariate_columns = ['covariates']
+
+        # TODO: Add better resample
         if self.resample:
             self.df = self.df.resample(self.resample).apply(self._aggregate)
 
@@ -74,6 +83,11 @@ class WindowGenerator():
     def _standardize(self):
         self.train_mean = self.train_df.mean()
         self.train_std = self.train_df.std()
+
+        # Leave labels in original scale
+        self.train_mean[self.label_columns] = 0
+        self.train_std[self.label_columns] = 1
+
         self.train_df = (self.train_df - self.train_mean) / self.train_std
         self.val_df = (self.val_df - self.train_mean) / self.train_std
         self.test_df = (self.test_df - self.train_mean) / self.train_std
@@ -82,9 +96,15 @@ class WindowGenerator():
         inputs = features[:, self.input_slice, :]
         labels = features[:, self.labels_slice, :]
         if self.label_columns is not None:
+            # Added to seperate labels from input in input
+            inputs = tf.stack(
+                [inputs[:, :, self.column_indices[name]] for name in self.covariate_columns],
+                axis=-1
+            )
             labels = tf.stack(
                 [labels[:, :, self.column_indices[name]] for name in self.label_columns],
-                axis=-1)
+                axis=-1
+            )
         # Slicing doesn't preserve static shape information, so set the shapes
         # manually. This way the `tf.data.Datasets` are easier to inspect.
         inputs.set_shape([None, self.input_width, None])
@@ -100,7 +120,6 @@ class WindowGenerator():
             sequence_stride=1,
             shuffle=True,
             batch_size=32, )
-
         ds = ds.map(self.split_window)
         return ds
 

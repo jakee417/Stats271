@@ -1,2 +1,2 @@
-model_checkpoint_path: "poisson.ckpt"
-all_model_checkpoint_paths: "poisson.ckpt"
+model_checkpoint_path: "poisson_approximation.ckpt"
+all_model_checkpoint_paths: "poisson_approximation.ckpt"

@@ -6,7 +6,6 @@ import pytest
 import json
 
 bitcoin = 'data/bitcoin_query.csv'
-OUT_STEPS = 24
 
 
 @pytest.mark.skip(reason='skipping for now')
@@ -16,10 +15,11 @@ def test_train(fname):
     save_path = 'saved/LstmRnn'
     save_img = 'figures/test_lstm_rnn.jpg'
     loss_img = 'figures/loss.jpg'
+    out_steps = 24
     multi_window = WindowGenerator(fname,
                                    input_width=72,
-                                   label_width=OUT_STEPS,
-                                   shift=OUT_STEPS,
+                                   label_width=out_steps,
+                                   shift=out_steps,
                                    label_columns=['num_transactions'],
                                    resample_frequency='H')
 
@@ -27,7 +27,7 @@ def test_train(fname):
 
     feedback_model = LstmRnn(num_features,
                              units=32,
-                             out_steps=OUT_STEPS)
+                             out_steps=out_steps)
     print('Output shape (batch, time, features): ', feedback_model(multi_window.example[0]).shape)
 
     history = feedback_model.compile_and_fit(model=feedback_model,
@@ -56,29 +56,33 @@ def test_train(fname):
     multi_window.plot(feedback_model, save_path=save_img)
 
 
+# normal, negative_binomial, poisson, poisson_approximation
 #@pytest.mark.skip(reason='skipping for now')
 @pytest.mark.parametrize("fname", [bitcoin])
-def test_train_poisson(fname):
-    checkpoint_path = 'checkpoints/poisson.ckpt'
-    save_path = 'saved/LstmRnnPoisson'
-    save_img = 'figures/poisson_test_lstm_rnn.jpg'
-    loss_img = 'figures/poisson_loss.jpg'
-
+@pytest.mark.parametrize("distribution", ['poisson_approximation'])
+def test_train_distribution(fname, distribution):
+    checkpoint_path = f'checkpoints/{distribution}.ckpt'
+    save_path = f'saved/LstmRnn{distribution}'
+    save_img = f'figures/{distribution}_test_lstm_rnn.jpg'
+    loss_img = f'figures/{distribution}_loss.jpg'
+    out_steps = 24
     multi_window = WindowGenerator(fname,
                                    input_width=72,
-                                   label_width=OUT_STEPS,
-                                   shift=OUT_STEPS,
+                                   label_width=out_steps,
+                                   shift=out_steps,
                                    label_columns=['num_transactions'],
-                                   resample_frequency='D',
-                                   standardize=False)
+                                   resample_frequency='H',
+                                   standardize=True)
 
     num_features = multi_window.num_features
 
     feedback_model = LstmRnn(num_features,
                              units=32,
-                             out_steps=OUT_STEPS,
-                             distribution=True)
-    print('Output shape (batch, time, features): ', feedback_model(multi_window.example[0]).shape)
+                             out_steps=out_steps,
+                             distribution=distribution)
+
+    print('Output shape (batch, time, features): ',
+          feedback_model(multi_window.example[0]).shape)
 
     history = feedback_model.compile_and_fit(model=feedback_model,
                                              window=multi_window,
@@ -103,16 +107,17 @@ def test_train_poisson(fname):
     out_file = open("metrics/test.json", "w")
     json.dump(performance, out_file, indent=6)
     out_file.close()
-    multi_window.plot(feedback_model, save_path=save_img)
+    multi_window.plot(feedback_model, save_path=save_img, max_subplots=6)
 
 @pytest.mark.skip(reason='skipping for now')
 @pytest.mark.parametrize("fname", [bitcoin])
 @pytest.mark.parametrize("model_path", ['saved/LstmRnn'])
 def test_load_save(model_path, fname):
+    out_steps = 6
     multi_window = WindowGenerator(fname,
                                    input_width=72,
-                                   label_width=OUT_STEPS,
-                                   shift=OUT_STEPS,
+                                   label_width=out_steps,
+                                   shift=out_steps,
                                    label_columns=['num_transactions'])
 
     new_model = tf.keras.models.load_model(model_path)

@@ -12,12 +12,46 @@ class LstmRnn(tf.keras.Model):
         self.num_features = num_features
         self.distribution = distribution
         # TODO: Add Time2Vec https://towardsdatascience.com/time2vec-for-time-series-features-encoding-a03a4f3f937e
+        self.lstm_cell_warmup = tf.keras.layers.LSTMCell(units)
         self.lstm_cell = tf.keras.layers.LSTMCell(units)
         # Also wrap the LSTMCell in an RNN to simplify the `warmup` method.
-        self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell, return_state=True)
-        self.dense = tf.keras.layers.Dense(self.num_features)
-        self.rate = tf.keras.layers.Dense(num_features, activation=tf.exp)
-        self.dist_lambda = tfp.layers.DistributionLambda(tfd.Poisson)
+        self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True)
+        if distribution == 'poisson':
+            self.dense = tf.keras.layers.Dense(self.num_features)
+            self.dist_lambda = tfp.layers.DistributionLambda(
+                lambda t: tfd.Poisson(
+                    #rate=1e-3 + tf.math.softplus(0.05 * t)
+                    rate=1e-3 + tf.exp(t)
+                )
+            )
+        elif distribution == 'negative_binomial':
+            self.dense = tf.keras.layers.Dense(self.num_features * 2)
+            self.dist_lambda = tfp.layers.DistributionLambda(
+                lambda t: tfd.NegativeBinomial(
+                    # FixMe: results in NaNs
+                    total_count=tf.math.round(1e-3 + tf.math.softplus(0.05 * t[..., 1:])),
+                    probs=tf.math.minimum(1e-3 + tf.math.softplus(0.05 * t[..., 1:]), tf.constant([1.]))
+                )
+            )
+        elif distribution == 'normal':
+            self.dense = tf.keras.layers.Dense(self.num_features * 2)
+            self.dist_lambda = tfp.layers.DistributionLambda(
+                lambda t: tfd.Normal(
+                    loc=t[..., :1],
+                    scale=1e-3 + tf.math.softplus(0.05 * t[..., 1:])
+                )
+            )
+        elif distribution == 'poisson_approximation':
+            # https://en.wikipedia.org/wiki/Poisson_distribution#Related_distributions
+            self.dense = tf.keras.layers.Dense(self.num_features)
+            self.dist_lambda = tfp.layers.DistributionLambda(
+                lambda t: tfd.Normal(
+                    loc=1e-3 + tf.math.softplus(0.05 * t),
+                    scale=tf.math.sqrt(1e-3 + tf.math.softplus(0.05 * t))
+                )
+            )
+        else:
+            self.dense = tf.keras.layers.Dense(self.num_features)
 
     def warmup(self, inputs):
         # inputs.shape => (batch, time, features)
@@ -25,10 +59,7 @@ class LstmRnn(tf.keras.Model):
         x, *state = self.lstm_rnn(inputs)
 
         # predictions.shape => (batch, features)
-        if self.distribution:
-            prediction = self.rate(x)
-        else:
-            prediction = self.dense(x)
+        prediction = self.dense(x)
         return prediction, state
 
     def call(self, inputs, training=None):
@@ -49,10 +80,7 @@ class LstmRnn(tf.keras.Model):
                                       states=state,
                                       training=training)
             # Convert the lstm output to a prediction.
-            if self.distribution:
-                prediction = self.rate(x)
-            else:
-                prediction = self.dense(x)
+            prediction = self.dense(x)
 
             # Add the prediction to the output
             predictions.append(prediction)
@@ -63,7 +91,7 @@ class LstmRnn(tf.keras.Model):
         predictions = tf.transpose(predictions, [1, 0, 2])
         # convert rates to distribution layer
         if self.distribution:
-            predictions = self.dist_lambda(1e-3 + predictions)
+            predictions = self.dist_lambda(predictions)
         return predictions
 
     @property

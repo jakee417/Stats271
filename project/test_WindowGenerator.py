@@ -12,12 +12,19 @@ zcash = 'data/zcash_query.csv'
 @pytest.mark.parametrize("fname", [bitcoin])
 def test_basic_loading(fname):
     w1 = WindowGenerator(fname,
-                         shift=5,
-                         label_width=5,
-                         label_columns=['num_transactions'])
+                         input_width=24,
+                         shift=24,
+                         label_width=24,
+                         label_columns=['num_transactions'],
+                         standardize=True)
     w1.plot()
+    w1.example[0]
+    w1.example[1]
+    w1.train
+    w1.val
+    w1.test
 
-
+@pytest.mark.skip(reason='skipping for now')
 @pytest.mark.parametrize("fname", [bitcoin])
 def test_multi_window(fname):
     OUT_STEPS = 24
