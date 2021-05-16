@@ -1,3 +1,4 @@
+import layers
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
@@ -18,38 +19,15 @@ class LstmRnn(tf.keras.Model):
         self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True)
         if distribution == 'poisson':
             self.dense = tf.keras.layers.Dense(self.num_features)
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.Poisson(
-                    #rate=1e-3 + tf.math.softplus(0.05 * t)
-                    rate=1e-3 + tf.exp(t)
-                )
-            )
-        elif distribution == 'negative_binomial':
-            self.dense = tf.keras.layers.Dense(self.num_features * 2)
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.NegativeBinomial(
-                    # FixMe: results in NaNs
-                    total_count=tf.math.round(1e-3 + tf.math.softplus(0.05 * t[..., 1:])),
-                    probs=tf.math.minimum(1e-3 + tf.math.softplus(0.05 * t[..., 1:]), tf.constant([1.]))
-                )
-            )
+            self.dist_lambda = layers.poisson
         elif distribution == 'normal':
             self.dense = tf.keras.layers.Dense(self.num_features * 2)
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.Normal(
-                    loc=t[..., :1],
-                    scale=1e-3 + tf.math.softplus(0.05 * t[..., 1:])
-                )
-            )
+            self.dist_lambda = layers.normal
+            #self.dist_lambda = distributions.variational_normal
+
         elif distribution == 'poisson_approximation':
-            # https://en.wikipedia.org/wiki/Poisson_distribution#Related_distributions
             self.dense = tf.keras.layers.Dense(self.num_features)
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.Normal(
-                    loc=1e-3 + tf.math.softplus(0.05 * t),
-                    scale=tf.math.sqrt(1e-3 + tf.math.softplus(0.05 * t))
-                )
-            )
+            self.dist_lambda = layers.poisson_approximation
         else:
             self.dense = tf.keras.layers.Dense(self.num_features)
 
@@ -93,10 +71,6 @@ class LstmRnn(tf.keras.Model):
         if self.distribution:
             predictions = self.dist_lambda(predictions)
         return predictions
-
-    @property
-    def model(self):
-        return self.keras_model
 
     def compile_and_fit(self,
                         model,
