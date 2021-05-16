@@ -60,7 +60,7 @@ variational_normal = tf.keras.Sequential([
 
 
 class T2V(Layer):
-
+#https://towardsdatascience.com/time2vec-for-time-series-features-encoding-a03a4f3f937e
     def __init__(self, output_dim=None, **kwargs):
         self.output_dim = output_dim
         super(T2V, self).__init__(**kwargs)

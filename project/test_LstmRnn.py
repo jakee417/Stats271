@@ -13,15 +13,21 @@ bitcoin = 'data/bitcoin_query.csv'
 @pytest.mark.parametrize("fname", [bitcoin])
 @pytest.mark.parametrize("distribution", [None])
 @pytest.mark.parametrize("hidden_units", [100])
-@pytest.mark.parametrize("resample", ['6H'])
+@pytest.mark.parametrize("t2v_units", [128])
+@pytest.mark.parametrize("resample", [None])
 @pytest.mark.parametrize("input_width", [90])
 @pytest.mark.parametrize("out_steps", [30])
+@pytest.mark.parametrize("max_epochs", [30])
+@pytest.mark.parametrize("patience", [3])
 def test_train_distribution(fname,
                             distribution,
                             hidden_units,
+                            t2v_units,
                             resample,
                             input_width,
-                            out_steps):
+                            out_steps,
+                            max_epochs,
+                            patience):
     tic = time.time()
     checkpoint_path = f'checkpoints/{distribution}.ckpt'
     save_path = f'saved/LstmRnn{distribution}'
@@ -40,7 +46,8 @@ def test_train_distribution(fname,
     print(multi_window)
 
     feedback_model = LstmRnn(num_features,
-                             units=hidden_units,
+                             lstm_units=hidden_units,
+                             t2v_units=t2v_units,
                              out_steps=out_steps,
                              distribution=distribution)
 
@@ -48,8 +55,8 @@ def test_train_distribution(fname,
                                              window=multi_window,
                                              checkpoint_path=checkpoint_path,
                                              save_path=save_path,
-                                             max_epochs=50,
-                                             patience=5)
+                                             max_epochs=max_epochs,
+                                             patience=patience)
 
     # plot history of loss and val_loss
     plt.plot(history.history['loss'])
@@ -66,23 +73,30 @@ def test_train_distribution(fname,
     performance['out_steps'] = out_steps
     performance['resample'] = resample
     performance['hidden_units'] = hidden_units
+    performance['hidden_units'] = t2v_units
     performance['train_size'] = len(multi_window.train)
     performance['val_size'] = len(multi_window.val)
     performance['test_size'] = len(multi_window.test)
     performance['distribution'] = distribution
     performance['num_features'] = multi_window.num_features
+    performance['max_epochs'] = max_epochs
+    performance['patience'] = patience
     performance['train'] = feedback_model.evaluate(multi_window.train)
     performance['val'] = feedback_model.evaluate(multi_window.val)
     performance['test'] = feedback_model.evaluate(multi_window.test, verbose=0)
     print(performance)
+
+    # cache performance
     out_file = open(f'metrics/{distribution}.json', "w")
     json.dump(performance, out_file, indent=6)
     out_file.close()
 
+    # init samples
     samples = None
     if distribution:
         samples = 500
 
+    # plot forecast plots
     multi_window.plot(feedback_model,
                       save_path=save_img,
                       max_subplots=6,

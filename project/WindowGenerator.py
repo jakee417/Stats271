@@ -59,7 +59,7 @@ class WindowGenerator():
         self.df = self.df[self.label_columns]
         if self.resample:
             self.df = self.df.resample(self.resample).apply(self._aggregate)
-        self.df['timestamp'] = self.df.index.map(datetime.datetime.timestamp)
+        #self.df['timestamp'] = self.df.index.map(datetime.datetime.timestamp)
 
     @staticmethod
     def _aggregate(x):
@@ -82,13 +82,6 @@ class WindowGenerator():
     def _standardize(self):
         self.train_mean = self.train_df.mean()
         self.train_std = self.train_df.std()
-
-        # Leave labels in original scale
-        '''
-        self.train_mean[self.label_columns] = 0
-        self.train_std[self.label_columns] = 1
-        '''
-
         self.train_df = (self.train_df - self.train_mean) / self.train_std
         self.val_df = (self.val_df - self.train_mean) / self.train_std
         self.test_df = (self.test_df - self.train_mean) / self.train_std
@@ -232,13 +225,13 @@ class WindowGenerator():
             if n == 0:
                 plt.legend()
 
-        plt.xlabel('Time [h]')
+        plt.xlabel(f'Time [{self.resample}]')
         plt.title(f'Forecast on {mode}')
         if save_path:
             plt.savefig(save_path)
         plt.show()
 
-    def plot_forecast(self, model=None, samples=500, save_path=None, plot_col='num_transactions'):
+    def plot_global_forecast(self, model=None, samples=500, save_path=None, plot_col='num_transactions'):
         plt.plot(self.test_df[self.label_columns[0]] * self.train_std[0] + self.train_mean[0], label='test')
 
         if model:
@@ -297,7 +290,6 @@ class WindowGenerator():
         plt.plot(self.train_df[self.label_columns[0]], label='train')
         plt.plot(self.val_df[self.label_columns[0]], label='val')
         plt.plot(self.test_df[self.label_columns[0]], label='test')
-
         plt.legend()
         if save_path:
             plt.savefig(save_path)

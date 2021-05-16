@@ -1,0 +1,24 @@
+{
+      "time": 1422.763365983963,
+      "input_width": 90,
+      "out_steps": 30,
+      "resample": null,
+      "hidden_units": 100,
+      "train_size": 1591,
+      "val_size": 452,
+      "test_size": 225,
+      "distribution": "normal",
+      "num_features": 2,
+      "train": [
+            0.37131401896476746,
+            0.506589949131012
+      ],
+      "val": [
+            1.5741112232208252,
+            1.0762248039245605
+      ],
+      "test": [
+            1.9554022550582886,
+            1.1102890968322754
+      ]
+}

@@ -6,17 +6,25 @@ tfd = tfp.distributions
 
 class LstmRnn(tf.keras.Model):
 
-    def __init__(self, num_features, units=32, out_steps=24, distribution=None):
+    def __init__(self, num_features,
+                 lstm_units=32,
+                 t2v_units=None,
+                 out_steps=24,
+                 distribution=None):
         super().__init__()
+        # Member attributes
         self.out_steps = out_steps
-        self.units = units
+        self.lstm_units = lstm_units
+        self.t2v_units = t2v_units
         self.num_features = num_features
         self.distribution = distribution
-        # TODO: Add Time2Vec https://towardsdatascience.com/time2vec-for-time-series-features-encoding-a03a4f3f937e
-        self.lstm_cell_warmup = tf.keras.layers.LSTMCell(units)
-        self.lstm_cell = tf.keras.layers.LSTMCell(units)
+        # One LSTMCell for warmup, one for forecasting
+        self.lstm_cell_warmup = tf.keras.layers.LSTMCell(self.lstm_units)
+        self.lstm_cell = tf.keras.layers.LSTMCell(self.lstm_units)
         # Also wrap the LSTMCell in an RNN to simplify the `warmup` method.
         self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True)
+        if self.t2v_units:
+            self.T2V = layers.T2V(self.t2v_units)
         if distribution == 'poisson':
             self.dense = tf.keras.layers.Dense(self.num_features)
             self.dist_lambda = layers.poisson
@@ -24,18 +32,17 @@ class LstmRnn(tf.keras.Model):
             self.dense = tf.keras.layers.Dense(self.num_features * 2)
             self.dist_lambda = layers.normal
             #self.dist_lambda = distributions.variational_normal
-
-        elif distribution == 'poisson_approximation':
-            self.dense = tf.keras.layers.Dense(self.num_features)
-            self.dist_lambda = layers.poisson_approximation
         else:
             self.dense = tf.keras.layers.Dense(self.num_features)
 
     def warmup(self, inputs):
         # inputs.shape => (batch, time, features)
         # x.shape => (batch, lstm_units)
-        x, *state = self.lstm_rnn(inputs)
-
+        if self.t2v_units:
+            x = self.T2V(inputs)
+            x, *state = self.lstm_rnn(x)
+        else:
+            x, *state = self.lstm_rnn(inputs)
         # predictions.shape => (batch, features)
         prediction = self.dense(x)
         return prediction, state
