@@ -1,4 +1,5 @@
 import layers
+from layers import LocationScaleMixture
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
@@ -23,15 +24,20 @@ class LstmRnn(tf.keras.Model):
         self.lstm_cell = tf.keras.layers.LSTMCell(self.lstm_units)
         # Also wrap the LSTMCell in an RNN to simplify the `warmup` method.
         self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True)
+        self.dense_1 = tf.keras.layers.Dense(self.lstm_units, activation='relu')
         if self.t2v_units:
             self.T2V = layers.T2V(self.t2v_units)
-        if distribution == 'poisson':
-            self.dense = tf.keras.layers.Dense(self.num_features)
-            self.dist_lambda = layers.poisson
-        elif distribution == 'normal':
+        if distribution == 'normal':
             self.dense = tf.keras.layers.Dense(self.num_features * 2)
             self.dist_lambda = layers.normal
             #self.dist_lambda = distributions.variational_normal
+        elif distribution == 'locationscalemix':
+            # [(Normal, 2), (Student t, 3), (laplace, 2), (cauchy, 2), (trunc_cauchy, 2) (logits, 4)]
+            self.dense = tf.keras.layers.Dense(self.num_features * 16)
+            self.dist_lambda = tfp.layers.DistributionLambda(
+                lambda t: LocationScaleMixture()(t)
+            )
+        # TODO: Implement HMM distribution
         else:
             self.dense = tf.keras.layers.Dense(self.num_features)
 
@@ -44,6 +50,8 @@ class LstmRnn(tf.keras.Model):
         else:
             x, *state = self.lstm_rnn(inputs)
         # predictions.shape => (batch, features)
+        x = self.dense_1(x)
+        x = self.dense_1(x)
         prediction = self.dense(x)
         return prediction, state
 
@@ -65,6 +73,8 @@ class LstmRnn(tf.keras.Model):
                                       states=state,
                                       training=training)
             # Convert the lstm output to a prediction.
+            x = self.dense_1(x)
+            x = self.dense_1(x)
             prediction = self.dense(x)
 
             # Add the prediction to the output

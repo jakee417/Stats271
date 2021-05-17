@@ -1,0 +1,28 @@
+{
+      "time": 337.11894607543945,
+      "input_width": 90,
+      "out_steps": 30,
+      "resample": "6H",
+      "hidden_units": 100,
+      "t2v_units": 128,
+      "train_size": 263,
+      "val_size": 73,
+      "test_size": 35,
+      "total_data": 12173,
+      "distribution": "locationscalemix",
+      "num_features": 1,
+      "max_epochs": 20,
+      "patience": 3,
+      "train": [
+            0.11332657933235168,
+            0.3691979944705963
+      ],
+      "val": [
+            0.795658528804779,
+            0.6608434915542603
+      ],
+      "test": [
+            0.9170833826065063,
+            0.7025627493858337
+      ]
+}

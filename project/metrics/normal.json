@@ -1,0 +1,28 @@
+{
+      "time": 468.48078203201294,
+      "input_width": 90,
+      "out_steps": 30,
+      "resample": "3H",
+      "hidden_units": 100,
+      "t2v_units": 128,
+      "train_size": 529,
+      "val_size": 149,
+      "test_size": 73,
+      "total_data": 24345,
+      "distribution": "normal",
+      "num_features": 1,
+      "max_epochs": 20,
+      "patience": 2,
+      "train": [
+            0.21250435709953308,
+            0.4193233251571655
+      ],
+      "val": [
+            1.0376402139663696,
+            0.7989541292190552
+      ],
+      "test": [
+            1.1547597646713257,
+            0.8529082536697388
+      ]
+}

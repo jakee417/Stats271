@@ -54,12 +54,12 @@ class WindowGenerator():
         self.df = pd.read_csv(self.fname)
         time_cats = ['hour', 'month', 'day', 'year']
         self.df.index = pd.to_datetime(self.df[time_cats])
-        # TODO: Incorporate time
         self.df = self.df.drop(labels=time_cats, axis=1)
         self.df = self.df[self.label_columns]
+        # TODO: add log variable option
         if self.resample:
             self.df = self.df.resample(self.resample).apply(self._aggregate)
-        #self.df['timestamp'] = self.df.index.map(datetime.datetime.timestamp)
+        # self.df['timestamp'] = self.df.index.map(datetime.datetime.timestamp)
 
     @staticmethod
     def _aggregate(x):
@@ -100,27 +100,16 @@ class WindowGenerator():
         labels.set_shape([None, self.label_width, None])
         return inputs, labels
 
-    def make_dataset(self, data):
+    def make_dataset(self, data, shuffle=True):
         data = np.array(data, dtype=np.float32)
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
             data=data,
             targets=None,
             sequence_length=self.total_window_size,
             sequence_stride=1,
-            shuffle=True,
+            shuffle=shuffle,
             batch_size=32, )
         ds = ds.map(self.split_window)
-        return ds
-
-    def make_dataset_unshuffled(self, data):
-        data = np.array(data, dtype=np.float32)
-        ds = tf.keras.preprocessing.timeseries_dataset_from_array(
-            data=data,
-            targets=None,
-            sequence_length=self.total_window_size,
-            sequence_stride=1,
-            shuffle=False,
-            batch_size=32, )
         return ds
 
     @property
@@ -173,9 +162,11 @@ class WindowGenerator():
         plt.figure(figsize=(12, 8))
         plot_col_index = self.column_indices[plot_col]
         max_n = min(max_subplots, len(inputs))
+        ax1 = None
         for n in range(max_n):
-            plt.subplot(max_n, 1, n + 1)
-            plt.ylabel(f'{plot_col} [normed]')
+            ax = plt.subplot(max_n, 1, n + 1,
+                             sharex=ax1 if ax1 else None,
+                             sharey=ax1 if ax1 else None)
             true_inputs = self.rescale(inputs[n, :, plot_col_index])
             plt.plot(self.input_indices, true_inputs,
                      label='Inputs', marker='.', zorder=-10)
@@ -203,7 +194,7 @@ class WindowGenerator():
                             edgecolors='k',
                             label='Predictions',
                             c='#ff7f0e', s=64)
-            # TODO: Remove this function and include ancestral sampling
+            # TODO: Change this to ancestral sampling
             if samples:
                 res_samples = model(inputs).sample(samples)
                 res_samples = res_samples[:, n, :, label_col_index]
@@ -223,68 +214,148 @@ class WindowGenerator():
                          alpha=0.5)
 
             if n == 0:
+                ax1 = ax
                 plt.legend()
+                plt.title(f'Forecast on {mode}')
+                ax1.set_ylabel(f'{plot_col} [normed]')
+                ax1.set_xlabel(f'Time [{self.resample}]')
 
-        plt.xlabel(f'Time [{self.resample}]')
-        plt.title(f'Forecast on {mode}')
         if save_path:
             plt.savefig(save_path)
         plt.show()
 
-    def plot_global_forecast(self, model=None, samples=500, save_path=None, plot_col='num_transactions'):
-        plt.plot(self.test_df[self.label_columns[0]] * self.train_std[0] + self.train_mean[0], label='test')
+    def plot_global_forecast(self,
+                             model,
+                             dataset_name='test',
+                             samples=500,
+                             save_path=None,
+                             breaklines=False,
+                             plot_col='num_transactions'):
+
+        if dataset_name == 'train':
+            dataset = self.train_df
+        elif dataset_name == 'val':
+            dataset = self.val_df
+        else:
+            dataset = self.test_df
+
+        original = (dataset[self.label_columns[0]]
+                    * self.train_std[0]
+                    + self.train_mean[0])
 
         if model:
-            unshuffled = tf.keras.preprocessing.timeseries_dataset_from_array(
-                data=np.array(self.test_df, dtype=np.float32),
-                targets=None,
-                sequence_length=self.total_window_size,
-                sequence_stride=1,
-                shuffle=False,
-                batch_size=32, )
-
-            ind = self.rolling_window(np.arange(len(self.test_df.index)), self.label_width) \
-                      .flatten()[:-self.label_width * self.input_width]
-            ind = np.arange(len(self.test_df.index))[self.total_window_size-1:]
-            ind = self.test_df.index[ind]
+            # Get indices of our forecast windows that are similar to how we created our data
+            ind = self.rolling_window(np.arange(len(dataset.index)), self.total_window_size) \
+                [::self.label_width, self.input_width:]  # slice only non-overlapping forecast windows
+            starts = ind[:, 0]
+            starts = dataset.index[starts]
+            ind = ind.flatten()
+            # Convert indices to dates
+            ind = dataset.index[ind]
 
             if self.label_columns:
                 label_col_index = self.label_columns_indices.get(plot_col, None)
 
+            # Make forecasts for windows from unshuffled dataset
+            unshuffled = self.make_dataset(data=dataset, shuffle=False)
+
+            # TODO: Add option to combine overlapping samples
+            # Loop through datasets making forecasts
             upper_l = []
             lower_l = []
             mean_l = []
 
             for element in unshuffled.enumerate(start=0):
-                data = element[1]
+                data = element[1][0]
                 res_samples = model(data).sample(samples)
                 # res_samples => (samples, batch, time, features)
-                res_samples = res_samples[:, :, 0, label_col_index]
+                # FixMe: Find more efficient way to sample
+                res_samples = res_samples[..., label_col_index]
                 res_samples = self.rescale(res_samples)
-                upper_l.append(np.percentile(res_samples, 95, axis=0).flatten())
-                lower_l.append(np.percentile(res_samples, 5, axis=0).flatten())
-                mean_l.append(np.mean(res_samples, axis=0).flatten())
+                upper_l.append(np.percentile(res_samples, 95, axis=0))
+                lower_l.append(np.percentile(res_samples, 5, axis=0))
+                mean_l.append(np.mean(res_samples, axis=0))
 
-            mean = np.concatenate(mean_l)
-            upper = np.concatenate(upper_l)
-            lower = np.concatenate(lower_l)
+            # Take non-overlapping slices of self.label_width and then flatten result
+            mean = np.concatenate(mean_l)[::self.label_width, :].flatten()
+            upper = np.concatenate(upper_l)[::self.label_width, :].flatten()
+            lower = np.concatenate(lower_l)[::self.label_width, :].flatten()
 
+            # Start the plotting!
+            # plot breaklines and the warmup section
+            if breaklines:
+                plt.vlines(starts,
+                           ymin=original.min(),
+                           ymax=original.max(),
+                           linestyles='--',
+                           color='black',
+                           label='Forecast Start Lines',
+                           alpha=0.1)
+
+                plt.fill_between(x=dataset.index[dataset.index <= starts[0]],
+                                 y1=original.min(),
+                                 y2=original.max(),
+                                 color='yellow',
+                                 alpha=0.2,
+                                 label=f'Warmup Period')
+
+            # Plot resulting confidence region and mean
             plt.fill_between(x=ind,
                              y1=lower,
                              y2=upper,
                              alpha=0.5,
                              label=f'90% CR')
+
+            # Compute and plot anomalies and not anomalies
+            anomaly_index = np.logical_or(original[ind] > upper, original[ind] < lower)
+            anomalies = original[ind][anomaly_index]
+            not_anomalies = original[ind][-anomaly_index]
+
+            plt.scatter(x=original.index,
+                        y=original,
+                        edgecolors='k',
+                        label='All Labels',
+                        c='black',
+                        s=4)
+
+            plt.plot(not_anomalies,
+                     linestyle='--',
+                     linewidth=0.3,
+                     color='green')
+
+            plt.scatter(x=not_anomalies.index,
+                        y=not_anomalies,
+                        edgecolors='k',
+                        label='Labels within 90%',
+                        c='green',
+                        s=5)
+
+            plt.scatter(x=anomalies.index,
+                        y=anomalies,
+                        edgecolors='k',
+                        label='Anomalies outside 90%',
+                        c='red',
+                        s=10)
+
+            # Plot anomaly ratio
+            print(f'Not Anomaly (90%) to Total ratio: '
+                  f'{np.sum(not_anomalies) / (np.sum(anomalies) + np.sum(not_anomalies))}')
+
+            # Finally plot the mean
             plt.plot(ind,
                      mean,
-                     'r--',
-                     label=f'Predicted Mean',
-                     alpha=0.5)
+                     '--',
+                     color='black',
+                     alpha=0.5,
+                     label=f'Predicted Mean')
+
+            # Clip plot in case of wild means
+            plt.ylim(original.min(), original.max())
 
         plt.legend()
         if save_path:
             plt.savefig(save_path)
         plt.show()
-
 
     def plot_splits(self, save_path=None):
         plt.plot(self.train_df[self.label_columns[0]], label='train')

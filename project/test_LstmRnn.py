@@ -6,18 +6,20 @@ import pytest
 import json
 import time
 
+# TODO: Add other coins
 bitcoin = 'data/bitcoin_query.csv'
 
+
 # normal, negative_binomial, poisson, poisson_approximation
-#@pytest.mark.skip(reason='skipping for now')
+# @pytest.mark.skip(reason='skipping for now')
 @pytest.mark.parametrize("fname", [bitcoin])
-@pytest.mark.parametrize("distribution", [None])
+@pytest.mark.parametrize("distribution", ['locationscalemix'])
 @pytest.mark.parametrize("hidden_units", [100])
 @pytest.mark.parametrize("t2v_units", [128])
-@pytest.mark.parametrize("resample", [None])
+@pytest.mark.parametrize("resample", ['6H'])
 @pytest.mark.parametrize("input_width", [90])
 @pytest.mark.parametrize("out_steps", [30])
-@pytest.mark.parametrize("max_epochs", [30])
+@pytest.mark.parametrize("max_epochs", [20])
 @pytest.mark.parametrize("patience", [3])
 def test_train_distribution(fname,
                             distribution,
@@ -31,7 +33,9 @@ def test_train_distribution(fname,
     tic = time.time()
     checkpoint_path = f'checkpoints/{distribution}.ckpt'
     save_path = f'saved/LstmRnn{distribution}'
-    save_img = f'figures/{distribution}_test_lstm_rnn.jpg'
+    train_save_img = f'figures/{distribution}_train_lstm_rnn.jpg'
+    test_save_img = f'figures/{distribution}_test_lstm_rnn.jpg'
+    global_save_img = f'figures/{distribution}_global_lstm_rnn.jpg'
     loss_img = f'figures/{distribution}_loss.jpg'
     multi_window = WindowGenerator(fname,
                                    input_width=input_width,
@@ -73,10 +77,11 @@ def test_train_distribution(fname,
     performance['out_steps'] = out_steps
     performance['resample'] = resample
     performance['hidden_units'] = hidden_units
-    performance['hidden_units'] = t2v_units
+    performance['t2v_units'] = t2v_units
     performance['train_size'] = len(multi_window.train)
     performance['val_size'] = len(multi_window.val)
     performance['test_size'] = len(multi_window.test)
+    performance['total_data'] = len(multi_window.df)
     performance['distribution'] = distribution
     performance['num_features'] = multi_window.num_features
     performance['max_epochs'] = max_epochs
@@ -98,17 +103,26 @@ def test_train_distribution(fname,
 
     # plot forecast plots
     multi_window.plot(feedback_model,
-                      save_path=save_img,
-                      max_subplots=6,
+                      save_path=train_save_img,
+                      max_subplots=3,
                       samples=samples,
                       mode='train')
 
     multi_window.plot(feedback_model,
-                      save_path=save_img,
-                      max_subplots=6,
+                      save_path=test_save_img,
+                      max_subplots=3,
                       samples=samples,
                       mode='test')
 
+    multi_window.plot_global_forecast(model=feedback_model,
+                                      save_path=global_save_img,
+                                      breaklines=True,
+                                      dataset_name='test')
+
+    multi_window.plot_global_forecast(model=feedback_model,
+                                      save_path=global_save_img,
+                                      breaklines=True,
+                                      dataset_name='train')
 
 
 @pytest.mark.skip(reason='skipping for now')

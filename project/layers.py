@@ -6,6 +6,7 @@ import numpy as np
 
 tfd = tfp.distributions
 
+# TODO: Make counting variables work
 poisson = tfp.layers.DistributionLambda(
     lambda t: tfd.Poisson(
         # rate=1e-3 + tf.math.softplus(0.05 * t)
@@ -89,3 +90,73 @@ class T2V(Layer):
         sin_trans = K.sin(K.dot(x, self.W) + self.P)
 
         return K.concatenate([sin_trans, original], -1)
+
+# TODO: Add Truncated Distributions
+class LocationScaleMixture(Layer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def call(self, inputs, *args, **kwargs):
+        # inputs.shape => (batch, time, params=7)
+        assert inputs.shape[2] == 16
+        normal_loc = inputs[..., 0:1]
+        normal_scale = 1e-3 + tf.math.softplus(0.05 * inputs[..., 1:2])
+        student_df = 1e-3 + tf.math.softplus(0.05 * inputs[..., 2:3])
+        student_loc = inputs[..., 3:4]
+        student_scale = 1e-3 + tf.math.softplus(inputs[..., 4:5])
+        laplace_loc = inputs[..., 5:6]
+        laplace_scale = 1e-3 + tf.math.softplus(0.05 * inputs[..., 6:7])
+        cauchy_loc = inputs[..., 7:8]
+        cauchy_scale = 1e-3 + tf.math.softplus(0.05 * inputs[..., 8:9])
+        trunc_cauchy_loc = inputs[..., 9:10]
+        trunc_cauchy_scale = 1e-3 + tf.math.softplus(0.05 * inputs[..., 10:11])
+        logits = tf.math.softplus(inputs[..., 11:])
+
+        # sum_i p_i = 1
+        # Pr(X ~ D_i(...)) = p_i
+        cat = tfd.Categorical(logits=logits)[..., None]
+
+        normal = tfd.Normal(
+            loc=normal_loc,
+            scale=normal_scale,
+            validate_args=True
+        )
+
+        studentT = tfd.StudentT(
+            df=student_df,
+            loc=student_loc,
+            scale=student_scale,
+            validate_args=True
+        )
+
+        laplace = tfd.Laplace(
+            loc=laplace_loc,
+            scale=laplace_scale,
+            validate_args=True
+        )
+
+        cauchy = tfd.Cauchy(
+            loc=cauchy_loc,
+            scale=cauchy_scale,
+            validate_args=True
+        )
+
+        trunc_cauchy = tfp.distributions.TruncatedCauchy(
+            loc=trunc_cauchy_loc,
+            scale=trunc_cauchy_scale,
+            low=-10,
+            high=10,
+            validate_args=False
+        )
+
+        mixture = tfd.Mixture(
+            cat=cat,
+            components=[
+                normal,
+                studentT,
+                laplace,
+                cauchy,
+                trunc_cauchy
+            ]
+        )
+        return mixture
