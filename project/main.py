@@ -79,7 +79,7 @@ def run(fname,
         save_path=global_save_img,
         breaklines=True,
         dataset_name='test',
-        samples=1000
+        samples=200
     )
 
     train_anomalies, train_anomalies_50 = multi_window.plot_global_forecast(
@@ -87,7 +87,7 @@ def run(fname,
         save_path=global_save_img,
         breaklines=True,
         dataset_name='train',
-        samples=1000
+        samples=200
     )
 
     # record evaluation metrics

@@ -282,8 +282,9 @@ class WindowGenerator():
                 res_samples = self.rescale(res_samples)
                 res_samples_l.append(res_samples)
 
+            # Concatenate and seperate (samples) from (time, features)
             all_samples = np.concatenate(res_samples_l, axis=1)
-            all_samples = all_samples.reshape(1000, -1)
+            all_samples = all_samples.reshape(samples, -1)
 
             upper_l = []
             lower_l = []
@@ -293,6 +294,7 @@ class WindowGenerator():
 
             # TODO: Vectorize me
             for index in ind_overlapping_unique:
+                # TODO: Add weighted forecast by sample variance?
                 sub_samples = all_samples[:, ind_overlapping == index]
                 upper_l.append(np.percentile(sub_samples, 95))
                 lower_l.append(np.percentile(sub_samples, 5))
