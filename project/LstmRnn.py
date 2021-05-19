@@ -32,8 +32,8 @@ class LstmRnn(tf.keras.Model):
             self.dist_lambda = layers.normal
             #self.dist_lambda = distributions.variational_normal
         elif distribution == 'locationscalemix':
-            # [(Normal, 2), (Student t, 3), (laplace, 2), (cauchy, 2), (trunc_cauchy, 2) (logits, 4)]
-            self.dense = tf.keras.layers.Dense(self.num_features * 16)
+            # [(Normal, 2), (Student t, 3), (laplace, 2), (logits, 3)]
+            self.dense = tf.keras.layers.Dense(self.num_features * 13)
             self.dist_lambda = tfp.layers.DistributionLambda(
                 lambda t: LocationScaleMixture()(t)
             )
@@ -50,8 +50,8 @@ class LstmRnn(tf.keras.Model):
         else:
             x, *state = self.lstm_rnn(inputs)
         # predictions.shape => (batch, features)
-        x = self.dense_1(x)
-        x = self.dense_1(x)
+        for _ in range(2):
+            x = self.dense_1(x)
         prediction = self.dense(x)
         return prediction, state
 
@@ -73,8 +73,8 @@ class LstmRnn(tf.keras.Model):
                                       states=state,
                                       training=training)
             # Convert the lstm output to a prediction.
-            x = self.dense_1(x)
-            x = self.dense_1(x)
+            for _ in range(2):
+                x = self.dense_1(x)
             prediction = self.dense(x)
 
             # Add the prediction to the output

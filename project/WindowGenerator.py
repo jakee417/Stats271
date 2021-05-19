@@ -108,6 +108,7 @@ class WindowGenerator():
             sequence_length=self.total_window_size,
             sequence_stride=1,
             shuffle=shuffle,
+            # setting this to self.label_width simplifies forecast
             batch_size=32, )
         ds = ds.map(self.split_window)
         return ds
@@ -245,13 +246,22 @@ class WindowGenerator():
 
         if model:
             # Get indices of our forecast windows that are similar to how we created our data
-            ind = self.rolling_window(np.arange(len(dataset.index)), self.total_window_size) \
-                [::self.label_width, self.input_width:]  # slice only non-overlapping forecast windows
+            ind = self.rolling_window(np.arange(len(dataset.index)), self.total_window_size)
+
+            # This is the overlapping code
+            ind_overlapping = ind[:, self.input_width:].flatten()
+            ind_overlapping_unique = np.unique(ind_overlapping)
+            ind_overlapping_index = dataset.index[ind_overlapping_unique]
+
+            # This is the non-overlapping code
+            '''
+            ind = ind[::self.label_width, self.input_width:]  # slice only non-overlapping forecast windows
             starts = ind[:, 0]
             starts = dataset.index[starts]
             ind = ind.flatten()
             # Convert indices to dates
             ind = dataset.index[ind]
+            '''
 
             if self.label_columns:
                 label_col_index = self.label_columns_indices.get(plot_col, None)
@@ -259,31 +269,54 @@ class WindowGenerator():
             # Make forecasts for windows from unshuffled dataset
             unshuffled = self.make_dataset(data=dataset, shuffle=False)
 
-            # TODO: Add option to combine overlapping samples
-            # Loop through datasets making forecasts
-            upper_l = []
-            lower_l = []
-            mean_l = []
 
+            res_samples_l = []
+
+            # Loop through datasets making forecasts
+            # and sample from each overlapping window's forecast
             for element in unshuffled.enumerate(start=0):
                 data = element[1][0]
                 res_samples = model(data).sample(samples)
                 # res_samples => (samples, batch, time, features)
-                # FixMe: Find more efficient way to sample
                 res_samples = res_samples[..., label_col_index]
                 res_samples = self.rescale(res_samples)
-                upper_l.append(np.percentile(res_samples, 95, axis=0))
-                lower_l.append(np.percentile(res_samples, 5, axis=0))
-                mean_l.append(np.mean(res_samples, axis=0))
+                res_samples_l.append(res_samples)
 
+            all_samples = np.concatenate(res_samples_l, axis=1)
+            all_samples = all_samples.reshape(1000, -1)
+
+            upper_l = []
+            lower_l = []
+            mean_l = []
+            upper_50_l = []
+            lower_50_l = []
+
+            # TODO: Vectorize me
+            for index in ind_overlapping_unique:
+                sub_samples = all_samples[:, ind_overlapping == index]
+                upper_l.append(np.percentile(sub_samples, 95))
+                lower_l.append(np.percentile(sub_samples, 5))
+                upper_50_l.append(np.percentile(sub_samples, 75))
+                lower_50_l.append(np.percentile(sub_samples, 25))
+                mean_l.append(np.mean(sub_samples))
+
+            mean = np.array(mean_l)
+            upper = np.array(upper_l)
+            lower = np.array(lower_l)
+            upper_50 = np.array(upper_50_l)
+            lower_50 = np.array(lower_50_l)
+
+            '''
             # Take non-overlapping slices of self.label_width and then flatten result
             mean = np.concatenate(mean_l)[::self.label_width, :].flatten()
             upper = np.concatenate(upper_l)[::self.label_width, :].flatten()
             lower = np.concatenate(lower_l)[::self.label_width, :].flatten()
+            '''
 
             # Start the plotting!
-            # plot breaklines and the warmup section
             if breaklines:
+                # plot breaklines and the warmup section
+                '''
                 plt.vlines(starts,
                            ymin=original.min(),
                            ymax=original.max(),
@@ -291,26 +324,42 @@ class WindowGenerator():
                            color='black',
                            label='Forecast Start Lines',
                            alpha=0.1)
+                '''
 
-                plt.fill_between(x=dataset.index[dataset.index <= starts[0]],
+                plt.fill_between(x=dataset.index[dataset.index <= ind_overlapping_index[0]],
                                  y1=original.min(),
                                  y2=original.max(),
                                  color='yellow',
                                  alpha=0.2,
                                  label=f'Warmup Period')
 
-            # Plot resulting confidence region and mean
-            plt.fill_between(x=ind,
+            # Plot resulting credible intervals
+            plt.fill_between(x=ind_overlapping_index,
                              y1=lower,
                              y2=upper,
                              alpha=0.5,
+                             color='cornflowerblue',
                              label=f'90% CR')
 
-            # Compute and plot anomalies and not anomalies
-            anomaly_index = np.logical_or(original[ind] > upper, original[ind] < lower)
-            anomalies = original[ind][anomaly_index]
-            not_anomalies = original[ind][-anomaly_index]
+            plt.fill_between(x=ind_overlapping_index,
+                             y1=lower_50,
+                             y2=upper_50,
+                             alpha=0.5,
+                             color='royalblue',
+                             label=f'50% CR')
 
+            # Compute and plot anomalies and not anomalies
+            anomaly_index = np.logical_or(original[ind_overlapping_index] > upper,
+                                          original[ind_overlapping_index] < lower)
+            anomalies = original[ind_overlapping_index][anomaly_index]
+            not_anomalies = original[ind_overlapping_index][-anomaly_index]
+
+            anomaly_index_50 = np.logical_or(original[ind_overlapping_index] > upper_50,
+                                             original[ind_overlapping_index] < lower_50)
+            anomalies_50 = original[ind_overlapping_index][anomaly_index_50]
+            not_anomalies_50 = original[ind_overlapping_index][-anomaly_index_50]
+
+            # Plot original points, good points, and anomalies
             plt.scatter(x=original.index,
                         y=original,
                         edgecolors='k',
@@ -338,15 +387,17 @@ class WindowGenerator():
                         s=10)
 
             # Plot anomaly ratio
-            print(f'Not Anomaly (90%) to Total ratio: '
-                  f'{np.sum(not_anomalies) / (np.sum(anomalies) + np.sum(not_anomalies))}')
+            anomaly_fraction = np.sum(not_anomalies) / (np.sum(anomalies) + np.sum(not_anomalies))
+            print(f'Not Anomaly (90%) to Total ratio for {dataset_name}: {anomaly_fraction}')
+            anomaly_fraction_50 = np.sum(not_anomalies_50) / (np.sum(anomalies_50) + np.sum(not_anomalies_50))
+            print(f'Not Anomaly (50%) to Total ratio for {dataset_name}: {anomaly_fraction_50}')
 
             # Finally plot the mean
-            plt.plot(ind,
+            plt.plot(ind_overlapping_index,
                      mean,
                      '--',
                      color='black',
-                     alpha=0.5,
+                     alpha=0.8,
                      label=f'Predicted Mean')
 
             # Clip plot in case of wild means
@@ -356,6 +407,8 @@ class WindowGenerator():
         if save_path:
             plt.savefig(save_path)
         plt.show()
+
+        return anomaly_fraction, anomaly_fraction_50
 
     def plot_splits(self, save_path=None):
         plt.plot(self.train_df[self.label_columns[0]], label='train')

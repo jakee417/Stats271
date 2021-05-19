@@ -1,28 +1,32 @@
 {
-      "time": 337.11894607543945,
+      "time": 625.9733643531799,
       "input_width": 90,
       "out_steps": 30,
       "resample": "6H",
       "hidden_units": 100,
       "t2v_units": 128,
-      "train_size": 263,
-      "val_size": 73,
-      "test_size": 35,
+      "train_size": 281,
+      "val_size": 78,
+      "test_size": 37,
       "total_data": 12173,
       "distribution": "locationscalemix",
       "num_features": 1,
       "max_epochs": 20,
-      "patience": 3,
+      "patience": 2,
       "train": [
-            0.11332657933235168,
-            0.3691979944705963
+            0.1216433122754097,
+            0.35795071721076965
       ],
       "val": [
-            0.795658528804779,
-            0.6608434915542603
+            0.9411786794662476,
+            0.6705800890922546
       ],
       "test": [
-            0.9170833826065063,
-            0.7025627493858337
-      ]
+            1.0455665588378906,
+            0.6951485872268677
+      ],
+      "train_anomalies": 0.884705752594835,
+      "train_anomalies_50": 0.449020220802212,
+      "test_anomalies": 0.8338986934223077,
+      "test_anomalies_50": 0.3623327592948363
 }
