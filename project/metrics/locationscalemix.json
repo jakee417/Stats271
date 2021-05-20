@@ -1,0 +1,32 @@
+{
+      "time": 7045.030720949173,
+      "input_width": 90,
+      "out_steps": 30,
+      "resample": null,
+      "hidden_units": 100,
+      "t2v_units": 128,
+      "train_size": 1591,
+      "val_size": 452,
+      "test_size": 225,
+      "total_data": 72894,
+      "distribution": "locationscalemix",
+      "num_features": 1,
+      "max_epochs": 20,
+      "patience": 2,
+      "train": [
+            0.39194175601005554,
+            0.5177985429763794
+      ],
+      "val": [
+            1.401621699333191,
+            1.1221355199813843
+      ],
+      "test": [
+            1.48399817943573,
+            1.16731595993042
+      ],
+      "train_anomalies": 0.9019477710130962,
+      "train_anomalies_50": 0.49863963031734804,
+      "test_anomalies": 0.8638767874996284,
+      "test_anomalies_50": 0.4400183192515247
+}

@@ -6,28 +6,16 @@ import pytest
 import json
 import time
 
-# TODO: Add other coins
-bitcoin = 'data/bitcoin_query.csv'
 
-# @pytest.mark.skip(reason='skipping for now')
-@pytest.mark.parametrize("fname", [bitcoin])
-@pytest.mark.parametrize("distribution", ['locationscalemix'])
-@pytest.mark.parametrize("hidden_units", [100])
-@pytest.mark.parametrize("t2v_units", [128])
-@pytest.mark.parametrize("resample", ['12H'])
-@pytest.mark.parametrize("input_width", [90])
-@pytest.mark.parametrize("out_steps", [30])
-@pytest.mark.parametrize("max_epochs", [20])
-@pytest.mark.parametrize("patience", [10])
-def test_train_distribution(fname,
-                            distribution,
-                            hidden_units,
-                            t2v_units,
-                            resample,
-                            input_width,
-                            out_steps,
-                            max_epochs,
-                            patience):
+def run(fname,
+        distribution,
+        hidden_units,
+        t2v_units,
+        resample,
+        input_width,
+        out_steps,
+        max_epochs,
+        patience):
     tic = time.time()
     checkpoint_path = f'checkpoints/{distribution}.ckpt'
     save_path = f'saved/LstmRnn{distribution}'
@@ -68,6 +56,40 @@ def test_train_distribution(fname,
     plt.savefig(loss_img)
     plt.show()
 
+    # init samples
+    samples = None
+    if distribution:
+        samples = 500
+
+    # plot forecast plots
+    multi_window.plot(feedback_model,
+                      save_path=train_save_img,
+                      max_subplots=3,
+                      samples=samples,
+                      mode='train')
+
+    multi_window.plot(feedback_model,
+                      save_path=test_save_img,
+                      max_subplots=3,
+                      samples=samples,
+                      mode='test')
+
+    test_anomalies, test_anomalies_50 = multi_window.plot_global_forecast(
+        model=feedback_model,
+        save_path=global_save_img,
+        breaklines=True,
+        dataset_name='test',
+        samples=200
+    )
+
+    train_anomalies, train_anomalies_50 = multi_window.plot_global_forecast(
+        model=feedback_model,
+        save_path=global_save_img,
+        breaklines=True,
+        dataset_name='train',
+        samples=200
+    )
+
     # record evaluation metrics
     performance = dict()
     performance['time'] = time.time() - tic
@@ -87,6 +109,10 @@ def test_train_distribution(fname,
     performance['train'] = feedback_model.evaluate(multi_window.train)
     performance['val'] = feedback_model.evaluate(multi_window.val)
     performance['test'] = feedback_model.evaluate(multi_window.test, verbose=0)
+    performance['train_anomalies'] = train_anomalies
+    performance['train_anomalies_50'] = train_anomalies_50
+    performance['test_anomalies'] = test_anomalies
+    performance['test_anomalies_50'] = test_anomalies_50
     print(performance)
 
     # cache performance
@@ -94,58 +120,25 @@ def test_train_distribution(fname,
     json.dump(performance, out_file, indent=6)
     out_file.close()
 
-    # init samples
-    samples = None
-    if distribution:
-        samples = 500
 
-    # plot forecast plots
-    multi_window.plot(feedback_model,
-                      save_path=train_save_img,
-                      max_subplots=3,
-                      samples=samples,
-                      mode='train')
+if __name__ == '__main__':
+    bitcoin = 'data/bitcoin_query.csv'
+    fname = bitcoin
+    distribution = 'locationscalemix'
+    hidden_units = 100
+    t2v_units = 128
+    resample = None
+    input_width = 90
+    out_steps = 30
+    max_epochs = 20
+    patience = 2
 
-    multi_window.plot(feedback_model,
-                      save_path=test_save_img,
-                      max_subplots=3,
-                      samples=samples,
-                      mode='test')
-
-    multi_window.plot_global_forecast(model=feedback_model,
-                                      save_path=global_save_img,
-                                      breaklines=True,
-                                      dataset_name='test',
-                                      samples=1000)
-
-    multi_window.plot_global_forecast(model=feedback_model,
-                                      save_path=global_save_img,
-                                      breaklines=True,
-                                      dataset_name='train',
-                                      samples=1000)
-
-
-@pytest.mark.skip(reason='skipping for now')
-@pytest.mark.parametrize("fname", [bitcoin])
-@pytest.mark.parametrize("model_path", ['saved/LstmRnn'])
-def test_load_save(model_path, fname):
-    out_steps = 6
-    multi_window = WindowGenerator(fname,
-                                   input_width=72,
-                                   label_width=out_steps,
-                                   shift=out_steps,
-                                   label_columns=['num_transactions'])
-
-    new_model = tf.keras.models.load_model(model_path)
-
-    # Check its architecture
-    print(new_model.summary())
-
-    performance = dict()
-    performance['train'] = new_model.evaluate(multi_window.train)
-    performance['val'] = new_model.evaluate(multi_window.val)
-    performance['test'] = new_model.evaluate(multi_window.test, verbose=0)
-    print(performance)
-    out_file = open("metrics/test.json", "w")
-    json.dump(performance, out_file, indent=6)
-    out_file.close()
+    run(fname,
+        distribution,
+        hidden_units,
+        t2v_units,
+        resample,
+        input_width,
+        out_steps,
+        max_epochs,
+        patience)

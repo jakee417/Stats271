@@ -1,3 +1,5 @@
+import layers
+from layers import LocationScaleMixture
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
@@ -5,60 +7,51 @@ tfd = tfp.distributions
 
 class LstmRnn(tf.keras.Model):
 
-    def __init__(self, num_features, units=32, out_steps=24, distribution=None):
+    def __init__(self, num_features,
+                 lstm_units=32,
+                 t2v_units=None,
+                 out_steps=24,
+                 distribution=None):
         super().__init__()
+        # Member attributes
         self.out_steps = out_steps
-        self.units = units
+        self.lstm_units = lstm_units
+        self.t2v_units = t2v_units
         self.num_features = num_features
         self.distribution = distribution
-        # TODO: Add Time2Vec https://towardsdatascience.com/time2vec-for-time-series-features-encoding-a03a4f3f937e
-        self.lstm_cell_warmup = tf.keras.layers.LSTMCell(units)
-        self.lstm_cell = tf.keras.layers.LSTMCell(units)
+        # One LSTMCell for warmup, one for forecasting
+        self.lstm_cell_warmup = tf.keras.layers.LSTMCell(self.lstm_units)
+        self.lstm_cell = tf.keras.layers.LSTMCell(self.lstm_units)
         # Also wrap the LSTMCell in an RNN to simplify the `warmup` method.
         self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True)
-        if distribution == 'poisson':
-            self.dense = tf.keras.layers.Dense(self.num_features)
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.Poisson(
-                    #rate=1e-3 + tf.math.softplus(0.05 * t)
-                    rate=1e-3 + tf.exp(t)
-                )
-            )
-        elif distribution == 'negative_binomial':
+        self.dense_1 = tf.keras.layers.Dense(self.lstm_units, activation='relu')
+        if self.t2v_units:
+            self.T2V = layers.T2V(self.t2v_units)
+        if distribution == 'normal':
             self.dense = tf.keras.layers.Dense(self.num_features * 2)
+            self.dist_lambda = layers.normal
+            #self.dist_lambda = distributions.variational_normal
+        elif distribution == 'locationscalemix':
+            # [(Normal, 2), (Student t, 3), (laplace, 2), (logits, 3)]
+            self.dense = tf.keras.layers.Dense(self.num_features * 13)
             self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.NegativeBinomial(
-                    # FixMe: results in NaNs
-                    total_count=tf.math.round(1e-3 + tf.math.softplus(0.05 * t[..., 1:])),
-                    probs=tf.math.minimum(1e-3 + tf.math.softplus(0.05 * t[..., 1:]), tf.constant([1.]))
-                )
+                lambda t: LocationScaleMixture()(t)
             )
-        elif distribution == 'normal':
-            self.dense = tf.keras.layers.Dense(self.num_features * 2)
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.Normal(
-                    loc=t[..., :1],
-                    scale=1e-3 + tf.math.softplus(0.05 * t[..., 1:])
-                )
-            )
-        elif distribution == 'poisson_approximation':
-            # https://en.wikipedia.org/wiki/Poisson_distribution#Related_distributions
-            self.dense = tf.keras.layers.Dense(self.num_features)
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: tfd.Normal(
-                    loc=1e-3 + tf.math.softplus(0.05 * t),
-                    scale=tf.math.sqrt(1e-3 + tf.math.softplus(0.05 * t))
-                )
-            )
+        # TODO: Implement HMM distribution
         else:
             self.dense = tf.keras.layers.Dense(self.num_features)
 
     def warmup(self, inputs):
         # inputs.shape => (batch, time, features)
         # x.shape => (batch, lstm_units)
-        x, *state = self.lstm_rnn(inputs)
-
+        if self.t2v_units:
+            x = self.T2V(inputs)
+            x, *state = self.lstm_rnn(x)
+        else:
+            x, *state = self.lstm_rnn(inputs)
         # predictions.shape => (batch, features)
+        for _ in range(2):
+            x = self.dense_1(x)
         prediction = self.dense(x)
         return prediction, state
 
@@ -80,6 +73,8 @@ class LstmRnn(tf.keras.Model):
                                       states=state,
                                       training=training)
             # Convert the lstm output to a prediction.
+            for _ in range(2):
+                x = self.dense_1(x)
             prediction = self.dense(x)
 
             # Add the prediction to the output
@@ -93,10 +88,6 @@ class LstmRnn(tf.keras.Model):
         if self.distribution:
             predictions = self.dist_lambda(predictions)
         return predictions
-
-    @property
-    def model(self):
-        return self.keras_model
 
     def compile_and_fit(self,
                         model,

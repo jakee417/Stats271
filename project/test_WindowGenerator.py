@@ -18,11 +18,10 @@ def test_basic_loading(fname):
                          label_columns=['num_transactions'],
                          standardize=True)
     w1.plot()
-    w1.example[0]
-    w1.example[1]
-    w1.train
-    w1.val
-    w1.test
+    w1.plot_splits()
+    print(w1)
+    print(w1.train_mean)
+    print(w1.train_std)
 
 @pytest.mark.skip(reason='skipping for now')
 @pytest.mark.parametrize("fname", [bitcoin])
