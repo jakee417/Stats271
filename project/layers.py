@@ -6,6 +6,8 @@ import numpy as np
 
 tfd = tfp.distributions
 
+# TODO: Implement HMM distribution
+
 # TODO: Make counting variables work
 poisson = tfp.layers.DistributionLambda(
     lambda t: tfd.Poisson(

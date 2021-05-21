@@ -37,7 +37,7 @@ class LstmRnn(tf.keras.Model):
             self.dist_lambda = tfp.layers.DistributionLambda(
                 lambda t: LocationScaleMixture()(t)
             )
-        # TODO: Implement HMM distribution
+
         else:
             self.dense = tf.keras.layers.Dense(self.num_features)
 
@@ -64,6 +64,8 @@ class LstmRnn(tf.keras.Model):
         # Insert the first prediction
         predictions.append(prediction)
 
+        # TODO: Add variational layer
+
         # Run the rest of the prediction steps
         for n in range(1, self.out_steps):
             # Use the last prediction as input.
@@ -88,6 +90,14 @@ class LstmRnn(tf.keras.Model):
         if self.distribution:
             predictions = self.dist_lambda(predictions)
         return predictions
+
+    # TODO: Move global forecast function to here rather than in WindowGenerator
+    def global_forecast(self):
+        pass
+
+    # TODO: Move window forecast function to here rather than in WindowGenerator
+    def window_forecast(self):
+        pass
 
     def compile_and_fit(self,
                         model,

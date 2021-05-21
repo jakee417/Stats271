@@ -195,7 +195,6 @@ class WindowGenerator():
                             edgecolors='k',
                             label='Predictions',
                             c='#ff7f0e', s=64)
-            # TODO: Change this to ancestral sampling
             if samples:
                 res_samples = model(inputs).sample(samples)
                 res_samples = res_samples[:, n, :, label_col_index]
@@ -293,8 +292,9 @@ class WindowGenerator():
             lower_50_l = []
 
             # TODO: Vectorize me
+            # TODO: Vectorize this over many percentiles
+            # TODO: Add weighted forecast by sample variance?
             for index in ind_overlapping_unique:
-                # TODO: Add weighted forecast by sample variance?
                 sub_samples = all_samples[:, ind_overlapping == index]
                 upper_l.append(np.percentile(sub_samples, 95))
                 lower_l.append(np.percentile(sub_samples, 5))
@@ -411,6 +411,10 @@ class WindowGenerator():
         plt.show()
 
         return anomaly_fraction, anomaly_fraction_50
+
+    # TODO: Add Posterior Predictive check plot
+    def plot_posterior_predictive_check(self):
+        pass
 
     def plot_splits(self, save_path=None):
         plt.plot(self.train_df[self.label_columns[0]], label='train')
