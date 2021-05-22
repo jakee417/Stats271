@@ -1,8 +1,6 @@
 from WindowGenerator import WindowGenerator
 import matplotlib.pyplot as plt
-import tensorflow as tf
 from LstmRnn import LstmRnn
-import pytest
 import json
 import time
 
@@ -74,20 +72,29 @@ def run(fname,
                       samples=samples,
                       mode='test')
 
-    test_anomalies, test_anomalies_50 = multi_window.plot_global_forecast(
+    test_forecast = multi_window.forecast(
         model=feedback_model,
-        save_path=global_save_img,
-        breaklines=True,
         dataset_name='test',
         samples=200
     )
 
-    train_anomalies, train_anomalies_50 = multi_window.plot_global_forecast(
+    train_forecast = multi_window.forecast(
         model=feedback_model,
-        save_path=global_save_img,
-        breaklines=True,
         dataset_name='train',
         samples=200
+    )
+
+    forecasts = [train_forecast, test_forecast]
+    post_checks = multi_window.plot_posterior_predictive_check(forecasts)
+
+    multi_window.plot_global_forecast(
+        test_forecast,
+        save_path=global_save_img
+    )
+
+    multi_window.plot_global_forecast(
+        train_forecast,
+        save_path=global_save_img
     )
 
     # record evaluation metrics
@@ -109,10 +116,7 @@ def run(fname,
     performance['train'] = feedback_model.evaluate(multi_window.train)
     performance['val'] = feedback_model.evaluate(multi_window.val)
     performance['test'] = feedback_model.evaluate(multi_window.test, verbose=0)
-    performance['train_anomalies'] = train_anomalies
-    performance['train_anomalies_50'] = train_anomalies_50
-    performance['test_anomalies'] = test_anomalies
-    performance['test_anomalies_50'] = test_anomalies_50
+    performance.update(post_checks)
     print(performance)
 
     # cache performance
@@ -122,12 +126,12 @@ def run(fname,
 
 
 if __name__ == '__main__':
-    bitcoin = 'data/bitcoin_query.csv'
+    bitcoin = 'data/ethereum_clean.csv'
     fname = bitcoin
     distribution = 'locationscalemix'
     hidden_units = 100
     t2v_units = 128
-    resample = None
+    resample = '6H'
     input_width = 90
     out_steps = 30
     max_epochs = 20

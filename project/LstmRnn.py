@@ -3,6 +3,7 @@ from layers import LocationScaleMixture
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
+import numpy as np
 
 
 class LstmRnn(tf.keras.Model):
@@ -28,18 +29,26 @@ class LstmRnn(tf.keras.Model):
         if self.t2v_units:
             self.T2V = layers.T2V(self.t2v_units)
         if distribution == 'normal':
-            self.dense = tf.keras.layers.Dense(self.num_features * 2)
+            params = 2
             self.dist_lambda = layers.normal
             #self.dist_lambda = distributions.variational_normal
         elif distribution == 'locationscalemix':
             # [(Normal, 2), (Student t, 3), (laplace, 2), (logits, 3)]
-            self.dense = tf.keras.layers.Dense(self.num_features * 13)
+            params = 13
             self.dist_lambda = tfp.layers.DistributionLambda(
                 lambda t: LocationScaleMixture()(t)
             )
-
+        elif distribution == 'hiddenmarkovmodel':
+            number_states = 30
+            params = (
+                2 * number_states
+                + number_states
+                + number_states**2
+            )
+            self.dense = tf.keras
         else:
             self.dense = tf.keras.layers.Dense(self.num_features)
+        self.dense = tf.keras.layer.Dense(self.num_features * params)
 
     def warmup(self, inputs):
         # inputs.shape => (batch, time, features)
@@ -90,14 +99,6 @@ class LstmRnn(tf.keras.Model):
         if self.distribution:
             predictions = self.dist_lambda(predictions)
         return predictions
-
-    # TODO: Move global forecast function to here rather than in WindowGenerator
-    def global_forecast(self):
-        pass
-
-    # TODO: Move window forecast function to here rather than in WindowGenerator
-    def window_forecast(self):
-        pass
 
     def compile_and_fit(self,
                         model,

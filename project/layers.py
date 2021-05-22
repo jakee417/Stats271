@@ -6,16 +6,6 @@ import numpy as np
 
 tfd = tfp.distributions
 
-# TODO: Implement HMM distribution
-
-# TODO: Make counting variables work
-poisson = tfp.layers.DistributionLambda(
-    lambda t: tfd.Poisson(
-        # rate=1e-3 + tf.math.softplus(0.05 * t)
-        rate=1e-3 + tf.exp(t)
-    )
-)
-
 normal = tfp.layers.DistributionLambda(
     lambda t: tfd.Normal(
         loc=t[..., :1],
@@ -93,7 +83,7 @@ class T2V(Layer):
 
         return K.concatenate([sin_trans, original], -1)
 
-# TODO: Add Truncated Distributions
+
 class LocationScaleMixture(Layer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -151,3 +141,64 @@ class LocationScaleMixture(Layer):
             ]
         )
         return mixture
+
+
+class HiddenMarkovModel(Layer):
+    def __init__(self,
+                 number_states, forecast_length,
+                 *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.num_states = number_states
+        self.forecast_length = forecast_length
+        self.rate_prior = tfd.Normal(loc=tf.zeros([self.num_states]),
+                                     scale=tf.ones([self.num_states]))
+        self.hmm = None
+
+    def call(self, inputs, *args, **kwargs):
+        # inputs.shape => (batch, params)
+        # (params=self.num_states + self.num_states**2 + 2 * self.num_states)
+        initial_state_logits = inputs[..., : self.num_states]
+        transition_logits = inputs[..., self.num_states:
+                                        self.num_states + self.num_states ** 2]
+
+        # Convert transition_logits into a square matrix
+        transition_logits = tf.reshape(transition_logits,
+                                       (-1,
+                                        self.num_states,
+                                        self.num_states))
+
+        # Get the start of the distribution's parameters
+        distribution_index = self.num_states + self.num_states ** 2
+        normal_loc = inputs[...,
+                     distribution_index:distribution_index + self.num_states]
+        normal_scale = inputs[..., distribution_index + self.num_states:]
+        normal_scale = 1e-3 + tf.math.softplus(0.05 * normal_scale)
+
+        # Create the input distributions to HMM
+        initial_distribution = tfd.Categorical(
+            logits=initial_state_logits,
+            name='initial_logits',
+            validate_args=True
+        )
+
+        transition_distribution = tfd.Categorical(
+            logits=transition_logits,
+            name='transition_logits',
+            validate_args=True
+        )
+
+        observation_distribution = tfd.Normal(
+            loc=normal_loc,
+            scale=normal_scale,
+            name='observation_distribution',
+            validate_args=True
+        )
+
+        self.hmm = tfd.HiddenMarkovModel(
+            initial_distribution=initial_distribution,
+            transition_distribution=transition_distribution,
+            observation_distribution=observation_distribution,
+            num_steps=self.forecast_length
+        )
+
+        return self.hmm
