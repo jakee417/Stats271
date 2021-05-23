@@ -10,6 +10,7 @@ def run(fname,
         hidden_units,
         t2v_units,
         dense_cells,
+        latent_dim,
         resample,
         input_width,
         out_steps,
@@ -40,7 +41,8 @@ def run(fname,
                              t2v_units=t2v_units,
                              out_steps=out_steps,
                              dense_cells=dense_cells,
-                             distribution=distribution)
+                             distribution=distribution,
+                             latent_dim=latent_dim)
 
     history = feedback_model.compile_and_fit(model=feedback_model,
                                              window=multi_window,
@@ -91,6 +93,9 @@ def run(fname,
     post_checks = multi_window.plot_posterior_predictive_check(forecasts,
                                                                post_check_img)
 
+    multi_window.plot_latent(train_forecast)
+    multi_window.plot_latent(test_forecast)
+
     multi_window.plot_global_forecast(
         test_forecast,
         save_path=global_save_img
@@ -110,6 +115,7 @@ def run(fname,
     performance['hidden_units'] = hidden_units
     performance['t2v_units'] = t2v_units
     performance['dense_cells'] = dense_cells
+    performance['latent_dim'] = latent_dim
     performance['train_size'] = len(multi_window.train)
     performance['val_size'] = len(multi_window.val)
     performance['test_size'] = len(multi_window.test)
@@ -133,21 +139,23 @@ def run(fname,
 if __name__ == '__main__':
     bitcoin = 'data/bitcoin_query.csv'
     fname = bitcoin
-    distribution = 'hiddenmarkovmodel'
-    hidden_units = 100
-    t2v_units = 128
-    dense_cells = 2
-    resample = '6H'
+    distribution = 'locationscalemix'
+    hidden_units = 64
+    t2v_units = 64
+    dense_cells = 1
+    resample = None
     input_width = 90
     out_steps = 30
     max_epochs = 20
     patience = 2
+    latent_dim = 2
 
     run(fname,
         distribution,
         hidden_units,
         t2v_units,
         dense_cells,
+        latent_dim,
         resample,
         input_width,
         out_steps,

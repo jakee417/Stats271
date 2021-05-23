@@ -1,4 +1,4 @@
-from WindowGenerator import WindowGenerator
+from ..WindowGenerator import WindowGenerator
 import pytest
 
 bitcoin = 'data/bitcoin_query.csv'
@@ -34,5 +34,5 @@ def test_multi_window(fname):
                                    label_columns=['num_transactions'],
                                    resample_frequency='D')
     multi_window.plot_splits('figures/test_splits.jpg')
-    multi_window.plot(save_path='figures/test_multi_window.jpg')
+    multi_window.plot(save_path='../figures/test_multi_window.jpg')
     multi_window

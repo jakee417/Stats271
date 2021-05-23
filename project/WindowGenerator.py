@@ -8,6 +8,7 @@ import tensorflow as tf
 
 
 class WindowGenerator():
+    """Creates a Window object consisting of time series data"""
     def __init__(self,
                  fname,
                  input_width=24,
@@ -51,6 +52,7 @@ class WindowGenerator():
         self.label_indices = np.arange(self.total_window_size)[self.labels_slice]
 
     def _read_data(self):
+        """Read in raw data and preprocess"""
         self.df = pd.read_csv(self.fname)
         time_cats = ['hour', 'month', 'day', 'year']
         self.df.index = pd.to_datetime(self.df[time_cats])
@@ -62,15 +64,18 @@ class WindowGenerator():
 
     @staticmethod
     def _aggregate(x):
+        """Helper function to aggregate data"""
         return np.sum(x) if len(x) > 0 else 0
 
     @staticmethod
     def rolling_window(a, window):
+        """Helper function to find indices of a rolling window"""
         shape = a.shape[:-1] + (a.shape[-1] - window + 1, window)
         strides = a.strides + (a.strides[-1],)
         return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
 
     def _split(self):
+        """Helper function to split train, val, and test sets"""
         self.column_indices = {name: i for i, name in enumerate(self.df.columns)}
         self.n = len(self.df)
         self.train_df = self.df[0:int(self.n * 0.7)]
@@ -79,6 +84,7 @@ class WindowGenerator():
         self.num_features = self.df.shape[1]
 
     def _standardize(self):
+        """Helper function to standardize data"""
         self.train_mean = self.train_df.mean()
         self.train_std = self.train_df.std()
         self.train_df = (self.train_df - self.train_mean) / self.train_std
@@ -86,6 +92,7 @@ class WindowGenerator():
         self.test_df = (self.test_df - self.train_mean) / self.train_std
 
     def split_window(self, features):
+        """Helper function to split a window into inputs and labels"""
         inputs = features[:, self.input_slice, :]
         labels = features[:, self.labels_slice, :]
         if self.label_columns is not None:
@@ -100,6 +107,7 @@ class WindowGenerator():
         return inputs, labels
 
     def make_dataset(self, data, shuffle=True):
+        """Create a time series dataset from array"""
         data = np.array(data, dtype=np.float32)
         ds = tf.keras.preprocessing.timeseries_dataset_from_array(
             data=data,
@@ -156,6 +164,7 @@ class WindowGenerator():
              save_path=None,
              mode='train',
              samples=None):
+        """Plot individual batches of data with or without predictions"""
         if mode == 'test':
             inputs, labels = self.test_example
         else:
@@ -229,7 +238,7 @@ class WindowGenerator():
                  dataset_name='test',
                  samples=500,
                  plot_col='num_transactions'):
-
+        """Forecast future values using a trained model over an entire dataset"""
         if dataset_name == 'train':
             dataset = self.train_df
         elif dataset_name == 'val':
@@ -256,12 +265,14 @@ class WindowGenerator():
         unshuffled = self.make_dataset(data=dataset, shuffle=False)
 
         res_samples_l = []
-
+        zs = []
         # Loop through datasets making forecasts
         # and sample from each overlapping window's forecast
         for element in unshuffled.enumerate(start=0):
             data = element[1][0]
+            # make forecasts and extract z's
             res_samples = model(data).sample(samples)
+            zs.append(model(data, encoding=True))
             # res_samples => (samples, batch, time, features)
             res_samples = res_samples[..., label_col_index]
             res_samples = self.rescale(res_samples)
@@ -270,6 +281,7 @@ class WindowGenerator():
         # Concatenate and seperate (samples) from (time, features)
         all_samples = np.concatenate(res_samples_l, axis=1)
         all_samples = all_samples.reshape(samples, -1)
+        zs = np.concatenate(zs)
 
         upper_l = []
         lower_l = []
@@ -309,12 +321,14 @@ class WindowGenerator():
             'ind_overlapping_index': ind_overlapping_index,
             'anomalies': anomalies,
             'not_anomalies': not_anomalies,
-            'dataset_name': dataset_name
+            'dataset_name': dataset_name,
+            'zs': zs
         }
 
     @staticmethod
     def plot_global_forecast(forecast,
                              save_path=None):
+        """Plot a global forecast given forecasted values"""
         anomalies = forecast['anomalies']
         not_anomalies = forecast['not_anomalies']
         mean = forecast['mean']
@@ -383,6 +397,7 @@ class WindowGenerator():
         plt.show()
 
     def plot_posterior_predictive_check(self, forecasts, save_path):
+        """Plot a posterior predictive check given forecasts"""
         uppers = np.arange(55, 96, 1)
         lowers = np.arange(45, 4, -1)
         ideal = ((100 - uppers) + lowers) / 100
@@ -418,7 +433,14 @@ class WindowGenerator():
         plt.show()
         return res
 
+    @staticmethod
+    def plot_latent(forecast):
+        zs = forecast['zs']
+        plt.scatter(zs[:, 0], zs[:, 1], c=np.arange(len(zs)))
+        plt.show()
+
     def plot_splits(self, save_path=None):
+        """Plot train, val, and test sets"""
         plt.plot(self.train_df[self.label_columns[0]], label='train')
         plt.plot(self.val_df[self.label_columns[0]], label='val')
         plt.plot(self.test_df[self.label_columns[0]], label='test')
