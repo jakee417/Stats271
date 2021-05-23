@@ -9,6 +9,7 @@ def run(fname,
         distribution,
         hidden_units,
         t2v_units,
+        dense_cells,
         resample,
         input_width,
         out_steps,
@@ -21,6 +22,7 @@ def run(fname,
     test_save_img = f'figures/{distribution}_test_lstm_rnn.jpg'
     global_save_img = f'figures/{distribution}_global_lstm_rnn.jpg'
     loss_img = f'figures/{distribution}_loss.jpg'
+    post_check_img = f'figures/{distribution}_post_check.jpg'
     multi_window = WindowGenerator(fname,
                                    input_width=input_width,
                                    label_width=out_steps,
@@ -37,6 +39,7 @@ def run(fname,
                              lstm_units=hidden_units,
                              t2v_units=t2v_units,
                              out_steps=out_steps,
+                             dense_cells=dense_cells,
                              distribution=distribution)
 
     history = feedback_model.compile_and_fit(model=feedback_model,
@@ -85,7 +88,8 @@ def run(fname,
     )
 
     forecasts = [train_forecast, test_forecast]
-    post_checks = multi_window.plot_posterior_predictive_check(forecasts)
+    post_checks = multi_window.plot_posterior_predictive_check(forecasts,
+                                                               post_check_img)
 
     multi_window.plot_global_forecast(
         test_forecast,
@@ -105,6 +109,7 @@ def run(fname,
     performance['resample'] = resample
     performance['hidden_units'] = hidden_units
     performance['t2v_units'] = t2v_units
+    performance['dense_cells'] = dense_cells
     performance['train_size'] = len(multi_window.train)
     performance['val_size'] = len(multi_window.val)
     performance['test_size'] = len(multi_window.test)
@@ -126,11 +131,12 @@ def run(fname,
 
 
 if __name__ == '__main__':
-    bitcoin = 'data/ethereum_clean.csv'
+    bitcoin = 'data/bitcoin_query.csv'
     fname = bitcoin
-    distribution = 'locationscalemix'
+    distribution = 'hiddenmarkovmodel'
     hidden_units = 100
     t2v_units = 128
+    dense_cells = 2
     resample = '6H'
     input_width = 90
     out_steps = 30
@@ -141,6 +147,7 @@ if __name__ == '__main__':
         distribution,
         hidden_units,
         t2v_units,
+        dense_cells,
         resample,
         input_width,
         out_steps,

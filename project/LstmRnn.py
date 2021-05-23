@@ -1,9 +1,9 @@
 import layers
 from layers import LocationScaleMixture
+from layers import HiddenMarkovModel
 import tensorflow as tf
 import tensorflow_probability as tfp
 tfd = tfp.distributions
-import numpy as np
 
 
 class LstmRnn(tf.keras.Model):
@@ -12,6 +12,7 @@ class LstmRnn(tf.keras.Model):
                  lstm_units=32,
                  t2v_units=None,
                  out_steps=24,
+                 dense_cells=1,
                  distribution=None):
         super().__init__()
         # Member attributes
@@ -20,6 +21,8 @@ class LstmRnn(tf.keras.Model):
         self.t2v_units = t2v_units
         self.num_features = num_features
         self.distribution = distribution
+        self.dense_cells = dense_cells
+        self.params = None
         # One LSTMCell for warmup, one for forecasting
         self.lstm_cell_warmup = tf.keras.layers.LSTMCell(self.lstm_units)
         self.lstm_cell = tf.keras.layers.LSTMCell(self.lstm_units)
@@ -29,26 +32,29 @@ class LstmRnn(tf.keras.Model):
         if self.t2v_units:
             self.T2V = layers.T2V(self.t2v_units)
         if distribution == 'normal':
-            params = 2
+            self.params = 2
             self.dist_lambda = layers.normal
             #self.dist_lambda = distributions.variational_normal
         elif distribution == 'locationscalemix':
             # [(Normal, 2), (Student t, 3), (laplace, 2), (logits, 3)]
-            params = 13
+            self.params = 13
             self.dist_lambda = tfp.layers.DistributionLambda(
                 lambda t: LocationScaleMixture()(t)
             )
         elif distribution == 'hiddenmarkovmodel':
-            number_states = 30
-            params = (
+            number_states = 15
+            self.params = (
                 2 * number_states
                 + number_states
                 + number_states**2
             )
-            self.dense = tf.keras
+            self.dist_lambda = tfp.layers.DistributionLambda(
+                lambda t: HiddenMarkovModel(number_states=number_states,
+                                            forecast_length=out_steps)(t)
+            )
         else:
             self.dense = tf.keras.layers.Dense(self.num_features)
-        self.dense = tf.keras.layer.Dense(self.num_features * params)
+        self.dense = tf.keras.layers.Dense(self.num_features * self.params)
 
     def warmup(self, inputs):
         # inputs.shape => (batch, time, features)
@@ -59,7 +65,7 @@ class LstmRnn(tf.keras.Model):
         else:
             x, *state = self.lstm_rnn(inputs)
         # predictions.shape => (batch, features)
-        for _ in range(2):
+        for _ in range(self.dense_cells):
             x = self.dense_1(x)
         prediction = self.dense(x)
         return prediction, state
@@ -84,7 +90,7 @@ class LstmRnn(tf.keras.Model):
                                       states=state,
                                       training=training)
             # Convert the lstm output to a prediction.
-            for _ in range(2):
+            for _ in range(self.dense_cells):
                 x = self.dense_1(x)
             prediction = self.dense(x)
 
@@ -97,7 +103,12 @@ class LstmRnn(tf.keras.Model):
         predictions = tf.transpose(predictions, [1, 0, 2])
         # convert rates to distribution layer
         if self.distribution:
+            # predictions.shape => (batch, time, params)
+            if self.distribution == 'hiddenmarkovmodel':
+                predictions = predictions[:, 0, :]
             predictions = self.dist_lambda(predictions)
+            print(predictions.shape)
+            # predictions.shape => (batch, time)
         return predictions
 
     def compile_and_fit(self,

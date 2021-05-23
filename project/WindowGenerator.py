@@ -382,7 +382,7 @@ class WindowGenerator():
             plt.savefig(save_path)
         plt.show()
 
-    def plot_posterior_predictive_check(self, forecasts):
+    def plot_posterior_predictive_check(self, forecasts, save_path):
         uppers = np.arange(55, 96, 1)
         lowers = np.arange(45, 4, -1)
         ideal = ((100 - uppers) + lowers) / 100
@@ -413,6 +413,8 @@ class WindowGenerator():
         plt.yticks(np.arange(.10, .95, .05))
         plt.grid()
         plt.legend()
+        if save_path:
+            plt.savefig(save_path)
         plt.show()
         return res
 

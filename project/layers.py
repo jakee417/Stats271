@@ -169,8 +169,7 @@ class HiddenMarkovModel(Layer):
 
         # Get the start of the distribution's parameters
         distribution_index = self.num_states + self.num_states ** 2
-        normal_loc = inputs[...,
-                     distribution_index:distribution_index + self.num_states]
+        normal_loc = inputs[..., distribution_index:distribution_index + self.num_states]
         normal_scale = inputs[..., distribution_index + self.num_states:]
         normal_scale = 1e-3 + tf.math.softplus(0.05 * normal_scale)
 

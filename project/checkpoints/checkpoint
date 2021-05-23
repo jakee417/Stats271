@@ -1,2 +1,2 @@
-model_checkpoint_path: "locationscalemix.ckpt"
-all_model_checkpoint_paths: "locationscalemix.ckpt"
+model_checkpoint_path: "normal.ckpt"
+all_model_checkpoint_paths: "normal.ckpt"
