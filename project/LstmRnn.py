@@ -15,23 +15,27 @@ https://github.com/francois-meyer/time2vec
 
 class LstmRnn(tf.keras.Model):
     """Implements a Probabilistic Lstm Rnn with embeddings and variational layers"""
-    def __init__(self, num_features,
+    def __init__(self,
                  lstm_units=32,
                  t2v_units=None,
                  out_steps=24,
                  dense_cells=1,
                  latent_dim=2,
+                 beta=1,
                  distribution=None):
         super().__init__()
         # Member attributes
         self.out_steps = out_steps
         self.lstm_units = lstm_units
         self.t2v_units = t2v_units
-        self.num_features = num_features
         self.distribution = distribution
         self.dense_cells = dense_cells
+        # These will be parameters for our TFP layer
         self.params = None
         self.latent_dim = latent_dim
+        # http://www.matthey.me/pdf/betavae_iclr_2017.pdf
+        self.beta = beta
+        # TODO: Add dropout
 
         # Metrics
         self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
@@ -41,7 +45,6 @@ class LstmRnn(tf.keras.Model):
         # TF Layers
         self.lstm_cell_warmup = tf.keras.layers.LSTMCell(self.lstm_units)
         self.lstm_cell = tf.keras.layers.LSTMCell(self.lstm_units)
-        # Also wrap the LSTMCell in an RNN to simplify the `warmup` method.
         self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True)
         self.dense_1 = tf.keras.layers.Dense(self.lstm_units, activation='relu')
         if self.t2v_units:
@@ -75,9 +78,9 @@ class LstmRnn(tf.keras.Model):
                 lambda t: HiddenMarkovModel(number_states=number_states,
                                             forecast_length=out_steps)(t)
             )
-        self.dense = tf.keras.layers.Dense(self.num_features * self.params)
+        self.dense = tf.keras.layers.Dense(self.params)
         if latent_dim:
-            self.dense_unbottleneck = tf.keras.layers.Dense(self.num_features * self.params)
+            self.dense_unbottleneck = tf.keras.layers.Dense(self.params)
 
     @property
     def metrics(self):
@@ -90,7 +93,6 @@ class LstmRnn(tf.keras.Model):
     @staticmethod
     def negative_log_likelihood(y_pred, y_true):
         # TODO: Put prior on reconstruction loss
-        # (tf.reduce_sum(rate_prior.log_prob(tf.math.exp(trainable_log_rates))) + hmm.log_prob(obs_data))
         return -y_pred.log_prob(y_true)
 
     def warmup(self, inputs):
@@ -117,7 +119,7 @@ class LstmRnn(tf.keras.Model):
             prediction = self.sampling([self.z_mean, self.z_log_var])
             if encoding:
                 return prediction
-        # transform dimensions back to size of output
+        # transform dimensions back to size of self.params
         prediction = self.dense_unbottleneck(prediction)
 
         # decoder
@@ -162,10 +164,11 @@ class LstmRnn(tf.keras.Model):
             # Compute the loss value
             reconstruction = self.negative_log_likelihood(y_pred, y)
             # https://keras.io/examples/generative/vae/
+            # https://arxiv.org/pdf/1312.6114.pdf
             kl_loss = -0.5 * (1 + self.z_log_var
                               - tf.square(self.z_mean)
                               - tf.exp(self.z_log_var))
-            kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+            kl_loss = self.beta * tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
             total_loss = reconstruction + kl_loss
 
         # Compute gradients
@@ -196,7 +199,7 @@ class LstmRnn(tf.keras.Model):
         kl_loss = -0.5 * (1 + self.z_log_var
                           - tf.square(self.z_mean)
                           - tf.exp(self.z_log_var))
-        kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+        kl_loss = self.beta * tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
         total_loss = reconstruction + kl_loss
         self.compiled_metrics.update_state(y, y_pred)
         self.total_loss_tracker.update_state(total_loss)
@@ -219,7 +222,8 @@ class LstmRnn(tf.keras.Model):
         cp = [tf.keras.callbacks.EarlyStopping(
                 monitor='val_loss',
                 patience=patience,
-                mode='min'
+                mode='min',
+                restore_best_weights=True
             )]
         if checkpoint_path:
             cp.append(tf.keras.callbacks.ModelCheckpoint(

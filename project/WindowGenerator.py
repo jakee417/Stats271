@@ -60,7 +60,7 @@ class WindowGenerator():
         self.df = self.df[self.label_columns]
         if self.resample:
             self.df = self.df.resample(self.resample).apply(self._aggregate)
-        # self.df['timestamp'] = self.df.index.map(datetime.datetime.timestamp)
+        self.df['timestamp'] = self.df.index.map(datetime.datetime.timestamp)
 
     @staticmethod
     def _aggregate(x):
@@ -115,7 +115,6 @@ class WindowGenerator():
             sequence_length=self.total_window_size,
             sequence_stride=1,
             shuffle=shuffle,
-            # setting this to self.label_width simplifies forecast
             batch_size=32, )
         ds = ds.map(self.split_window)
         return ds
@@ -270,15 +269,16 @@ class WindowGenerator():
         # and sample from each overlapping window's forecast
         for element in unshuffled.enumerate(start=0):
             data = element[1][0]
-            # make forecasts and extract z's
+            # make forecasts
             res_samples = model(data).sample(samples)
+            # extract z's
             zs.append(model(data, encoding=True))
             # res_samples => (samples, batch, time, features)
             res_samples = res_samples[..., label_col_index]
             res_samples = self.rescale(res_samples)
             res_samples_l.append(res_samples)
 
-        # Concatenate and seperate (samples) from (time, features)
+        # Concatenate and separate (samples) from (time, features)
         all_samples = np.concatenate(res_samples_l, axis=1)
         all_samples = all_samples.reshape(samples, -1)
         zs = np.concatenate(zs)
@@ -361,10 +361,13 @@ class WindowGenerator():
                     c='black',
                     s=4)
 
+        '''
         plt.plot(not_anomalies,
                  linestyle='--',
                  linewidth=0.3,
                  color='green')
+        '''
+
 
         plt.scatter(x=not_anomalies.index,
                     y=not_anomalies,
@@ -396,7 +399,8 @@ class WindowGenerator():
             plt.savefig(save_path)
         plt.show()
 
-    def plot_posterior_predictive_check(self, forecasts, save_path):
+    @staticmethod
+    def plot_posterior_predictive_check(forecasts, save_path):
         """Plot a posterior predictive check given forecasts"""
         uppers = np.arange(55, 96, 1)
         lowers = np.arange(45, 4, -1)
@@ -434,9 +438,49 @@ class WindowGenerator():
         return res
 
     @staticmethod
-    def plot_latent(forecast):
+    def plot_correlations(forecast, save_path=None):
         zs = forecast['zs']
-        plt.scatter(zs[:, 0], zs[:, 1], c=np.arange(len(zs)))
+        n = len(zs)
+        fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True, sharey=True)
+        ax1.acorr(zs[:, 0], usevlines=True, maxlags=None, normed=True, lw=1,
+                  label='Autocorrelation of 1st Latent Dimension', alpha=.3)
+        ax2.acorr(zs[:, 1], usevlines=True, maxlags=None, normed=True, lw=1,
+                  label='Autocorrelation of 2nd Latent Dimension', alpha=.3, color='orange')
+        ax1.axhline(y=2 / np.sqrt(n), color='red', linestyle='--')
+        ax1.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
+        ax2.axhline(y=2 / np.sqrt(n), color='red', linestyle='--', label=r'$\pm 2/n^{1/2}$')
+        ax2.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
+        plt.xlim(left=1)
+        plt.ylim(-3 / np.sqrt(n), 3 / np.sqrt(n))
+        ax1.set(title='Autocorrelation of Latent Dimensions', ylabel='Sample Correlation')
+        ax2.set(ylabel='Sample Correlation')
+        plt.xlabel('Lag')
+        handles, labels = [(a + b) for a, b in zip(ax1.get_legend_handles_labels(), ax2.get_legend_handles_labels())]
+        fig.legend(handles, labels, loc='upper right')
+        if save_path:
+            plt.savefig(save_path + '_latent_dims.jpg')
+        plt.show()
+
+        original = forecast['original']
+        mean = forecast['mean']
+        n = len(mean)
+        fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True)
+        ax1.acorr(mean, usevlines=True, maxlags=None, normed=True, lw=1,
+                  label='Autocorrelation of Predictions', alpha=.3)
+        ax2.acorr(original, usevlines=True, maxlags=None, normed=True, lw=1,
+                  label='Autocorrelation of Observed', alpha=.3, color='orange')
+        ax1.axhline(y=2 / np.sqrt(n), color='red', linestyle='--')
+        ax1.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
+        ax2.axhline(y=2 / np.sqrt(n), color='red', linestyle='--', label=r'$\pm 2/n^{1/2}$')
+        ax2.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
+        plt.xlim(left=1)
+        ax1.set(title='Autocorrelation of Predicted Mean vs Observed Series', ylabel='Sample Correlation')
+        ax2.set(ylabel='Sample Correlation')
+        plt.xlabel('Lag')
+        handles, labels = [(a + b) for a, b in zip(ax1.get_legend_handles_labels(), ax2.get_legend_handles_labels())]
+        fig.legend(handles, labels, loc='upper right')
+        if save_path:
+            plt.savefig(save_path + '_obs_predicted.jpg')
         plt.show()
 
     def plot_splits(self, save_path=None):

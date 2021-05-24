@@ -11,6 +11,7 @@ def run(fname,
         t2v_units,
         dense_cells,
         latent_dim,
+        beta,
         resample,
         input_width,
         out_steps,
@@ -24,6 +25,7 @@ def run(fname,
     global_save_img = f'figures/{distribution}_global_lstm_rnn.jpg'
     loss_img = f'figures/{distribution}_loss.jpg'
     post_check_img = f'figures/{distribution}_post_check.jpg'
+    latent_img = f'figures/{distribution}_correlation'
     multi_window = WindowGenerator(fname,
                                    input_width=input_width,
                                    label_width=out_steps,
@@ -32,17 +34,16 @@ def run(fname,
                                    resample_frequency=resample,
                                    standardize=True)
 
-    num_features = multi_window.num_features
     # multi_window.plot_splits(feedback_model)
     print(multi_window)
 
-    feedback_model = LstmRnn(num_features,
-                             lstm_units=hidden_units,
+    feedback_model = LstmRnn(lstm_units=hidden_units,
                              t2v_units=t2v_units,
                              out_steps=out_steps,
                              dense_cells=dense_cells,
                              distribution=distribution,
-                             latent_dim=latent_dim)
+                             latent_dim=latent_dim,
+                             beta=beta)
 
     history = feedback_model.compile_and_fit(model=feedback_model,
                                              window=multi_window,
@@ -50,6 +51,7 @@ def run(fname,
                                              save_path=save_path,
                                              max_epochs=max_epochs,
                                              patience=patience)
+    toc = time.time()
 
     # plot history of loss and val_loss
     plt.plot(history.history['loss'])
@@ -93,8 +95,8 @@ def run(fname,
     post_checks = multi_window.plot_posterior_predictive_check(forecasts,
                                                                post_check_img)
 
-    multi_window.plot_latent(train_forecast)
-    multi_window.plot_latent(test_forecast)
+    multi_window.plot_correlations(train_forecast, latent_img)
+    multi_window.plot_correlations(test_forecast, latent_img)
 
     multi_window.plot_global_forecast(
         test_forecast,
@@ -108,7 +110,7 @@ def run(fname,
 
     # record evaluation metrics
     performance = dict()
-    performance['time'] = time.time() - tic
+    performance['time'] = toc - tic
     performance['input_width'] = input_width
     performance['out_steps'] = out_steps
     performance['resample'] = resample
@@ -116,12 +118,12 @@ def run(fname,
     performance['t2v_units'] = t2v_units
     performance['dense_cells'] = dense_cells
     performance['latent_dim'] = latent_dim
+    performance['beta'] = beta
     performance['train_size'] = len(multi_window.train)
     performance['val_size'] = len(multi_window.val)
     performance['test_size'] = len(multi_window.test)
     performance['total_data'] = len(multi_window.df)
     performance['distribution'] = distribution
-    performance['num_features'] = multi_window.num_features
     performance['max_epochs'] = max_epochs
     performance['patience'] = patience
     performance['train'] = feedback_model.evaluate(multi_window.train)
@@ -139,16 +141,17 @@ def run(fname,
 if __name__ == '__main__':
     bitcoin = 'data/bitcoin_query.csv'
     fname = bitcoin
-    distribution = 'locationscalemix'
+    distribution = 'normal'
     hidden_units = 64
     t2v_units = 64
     dense_cells = 1
     resample = None
     input_width = 90
     out_steps = 30
-    max_epochs = 20
+    max_epochs = 10
     patience = 2
     latent_dim = 2
+    beta = 1
 
     run(fname,
         distribution,
@@ -156,6 +159,7 @@ if __name__ == '__main__':
         t2v_units,
         dense_cells,
         latent_dim,
+        beta,
         resample,
         input_width,
         out_steps,
