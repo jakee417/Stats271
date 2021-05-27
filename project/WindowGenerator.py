@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import datetime
 import matplotlib.pyplot as plt
+import matplotlib
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -9,6 +10,7 @@ import tensorflow as tf
 
 class WindowGenerator():
     """Creates a Window object consisting of time series data"""
+
     def __init__(self,
                  fname,
                  input_width=24,
@@ -141,6 +143,8 @@ class WindowGenerator():
             # And cache it for next time
             self._test_example = result
         return result
+
+    # TODO: Add plot size property
 
     @property
     def train_example(self):
@@ -281,13 +285,15 @@ class WindowGenerator():
         # Concatenate and separate (samples) from (time, features)
         all_samples = np.concatenate(res_samples_l, axis=1)
         all_samples = all_samples.reshape(samples, -1)
-        zs = np.concatenate(zs)
+        try:
+            zs = np.concatenate(zs)
+        except:
+            zs = None
 
         upper_l = []
         lower_l = []
         mean_l = []
 
-        # TODO: Add weighted forecast by sample variance?
         uppers = np.arange(55, 96, 1)
         lowers = np.arange(45, 4, -1)
         for index in ind_overlapping_unique:
@@ -345,6 +351,8 @@ class WindowGenerator():
                          alpha=0.2,
                          label=f'Warmup Period')
 
+        # TODO: Make scatter plots look better
+
         # Plot resulting credible intervals
         plt.fill_between(x=ind_overlapping_index,
                          y1=lower_90,
@@ -356,10 +364,9 @@ class WindowGenerator():
         # Plot original points, good points, and anomalies
         plt.scatter(x=original.index,
                     y=original,
-                    edgecolors='k',
                     label='All Labels',
                     c='black',
-                    s=4)
+                    s=3)
 
         '''
         plt.plot(not_anomalies,
@@ -368,10 +375,8 @@ class WindowGenerator():
                  color='green')
         '''
 
-
         plt.scatter(x=not_anomalies.index,
                     y=not_anomalies,
-                    edgecolors='k',
                     label='Labels within 90%',
                     c='green',
                     s=5)
@@ -402,34 +407,44 @@ class WindowGenerator():
     @staticmethod
     def plot_posterior_predictive_check(forecasts, save_path):
         """Plot a posterior predictive check given forecasts"""
+        # TODO: Break this up into upper and lower
         uppers = np.arange(55, 96, 1)
         lowers = np.arange(45, 4, -1)
         ideal = ((100 - uppers) + lowers) / 100
         plt.plot(uppers - lowers,
-                 ideal,
+                 ideal / 2,
                  color='red',
                  linestyle='--',
-                 label='Theoretical')
+                 label='Ideal Upper and Lower Tails')
         res = {}
-        for forecast in forecasts:
+        colors = {'train': 'blue', 'val': 'orange', 'test': 'green'}
+        for i, forecast in enumerate(forecasts):
             name = forecast['dataset_name']
             data = np.array(forecast['original'][forecast['ind_overlapping_index']])
             data = data[..., None]
             upper = forecast['upper']
             lower = forecast['lower']
-            outside = np.logical_or(
-                data > upper,
-                data < lower
-            ).sum(axis=0) / len(data)
-            area = np.sum(np.abs(outside - ideal))
-            plt.plot(uppers - lowers, outside, label=name)
-            res[name + '_area'] = area
-            res[name + '_outside'] = list(outside)
+
+            # Compute T(Y, T') and Err
+            outside_above = (data > upper).sum(axis=0) / len(data)
+            outside_below = (data < lower).sum(axis=0) / len(data)
+
+            # Compute T(Err)
+            area_above = np.sum(np.abs(outside_above - ideal / 2))
+            area_below = np.sum(np.abs(outside_below - ideal / 2))
+
+            # Plot results
+            plt.plot(uppers - lowers, outside_above, label=f'Upper Tails of {name}',
+                     marker='^', lw=1, markersize=10, color=colors[name])
+            plt.plot(uppers - lowers, outside_below, label=f'Lower Tails of {name}',
+                     marker='v', lw=1, markersize=10, color=colors[name])
+            res[name + '_area_above'] = area_above
+            res[name + '_area_below'] = area_below
         plt.title('Posterior Predictive Check')
-        plt.ylabel('Observed proportion outside Credible Interval')
-        plt.xlabel('Credible Interval')
+        plt.ylabel('Observed Proportion Falling Outside Credible Interval')
+        plt.xlabel('Credible Interval Level')
         plt.xticks((uppers - lowers)[::5])
-        plt.yticks(np.arange(.10, .95, .05))
+        plt.yticks(np.arange(.05, .6, .05))
         plt.grid()
         plt.legend()
         if save_path:
@@ -440,26 +455,28 @@ class WindowGenerator():
     @staticmethod
     def plot_correlations(forecast, save_path=None):
         zs = forecast['zs']
-        n = len(zs)
-        fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True, sharey=True)
-        ax1.acorr(zs[:, 0], usevlines=True, maxlags=None, normed=True, lw=1,
-                  label='Autocorrelation of 1st Latent Dimension', alpha=.3)
-        ax2.acorr(zs[:, 1], usevlines=True, maxlags=None, normed=True, lw=1,
-                  label='Autocorrelation of 2nd Latent Dimension', alpha=.3, color='orange')
-        ax1.axhline(y=2 / np.sqrt(n), color='red', linestyle='--')
-        ax1.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
-        ax2.axhline(y=2 / np.sqrt(n), color='red', linestyle='--', label=r'$\pm 2/n^{1/2}$')
-        ax2.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
-        plt.xlim(left=1)
-        plt.ylim(-3 / np.sqrt(n), 3 / np.sqrt(n))
-        ax1.set(title='Autocorrelation of Latent Dimensions', ylabel='Sample Correlation')
-        ax2.set(ylabel='Sample Correlation')
-        plt.xlabel('Lag')
-        handles, labels = [(a + b) for a, b in zip(ax1.get_legend_handles_labels(), ax2.get_legend_handles_labels())]
-        fig.legend(handles, labels, loc='upper right')
-        if save_path:
-            plt.savefig(save_path + '_latent_dims.jpg')
-        plt.show()
+        if zs:
+            n = len(zs)
+            fig, [ax1, ax2] = plt.subplots(2, 1, sharex=True, sharey=True)
+            ax1.acorr(zs[:, 0], usevlines=True, maxlags=None, normed=True, lw=1,
+                      label='Autocorrelation of 1st Latent Dimension', alpha=.3)
+            ax2.acorr(zs[:, 1], usevlines=True, maxlags=None, normed=True, lw=1,
+                      label='Autocorrelation of 2nd Latent Dimension', alpha=.3, color='orange')
+            ax1.axhline(y=2 / np.sqrt(n), color='red', linestyle='--')
+            ax1.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
+            ax2.axhline(y=2 / np.sqrt(n), color='red', linestyle='--', label=r'$\pm 2/n^{1/2}$')
+            ax2.axhline(y=-2 / np.sqrt(n), color='red', linestyle='--')
+            plt.xlim(left=1)
+            plt.ylim(-3 / np.sqrt(n), 3 / np.sqrt(n))
+            ax1.set(title='Autocorrelation of Latent Dimensions', ylabel='Sample Correlation')
+            ax2.set(ylabel='Sample Correlation')
+            plt.xlabel('Lag')
+            handles, labels = [(a + b) for a, b in
+                               zip(ax1.get_legend_handles_labels(), ax2.get_legend_handles_labels())]
+            fig.legend(handles, labels, loc='upper right')
+            if save_path:
+                plt.savefig(save_path + '_latent_dims.jpg')
+            plt.show()
 
         original = forecast['original']
         mean = forecast['mean']

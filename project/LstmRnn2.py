@@ -26,7 +26,6 @@ def encoder(num_features,
     for _ in range(dense_cells):
         x = tf.keras.layers.Dense(lstm_units, activation='relu')(x)
     prediction = tf.keras.layers.Dense(num_features * params)(x)
-    # TODO: Add variational layer
     return tf.keras.Model(encoder_inputs, [z_mean, z_log_var, z], name="encoder")
 
 

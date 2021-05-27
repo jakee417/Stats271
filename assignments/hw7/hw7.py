@@ -140,7 +140,6 @@ class HiddenMarkovModel:
             likelihoods = np.exp(log_likelihoods)
             temp = alphas * likelihoods * betas
             expectation = temp / (np.sum(temp, axis=1)[..., None])
-            assert expectation.shape == (T, K)
             expectations.append(expectation)
         assert len(expectations) == len(self.data)
         return expectations, marginal_ll
@@ -169,7 +168,7 @@ class HiddenMarkovModel:
         # global set of parameters that we are maintaining
         self.normals = {}
         total_data = np.concatenate(self.data)
-        total_expectations = np.concatenate(expectations)
+        total_expectations = np.concatenate(expectations) + 1e-3
         for i in range(self.num_states):
             weights = total_expectations[:, i, None]
             psi_k_2 = (weights * total_data).sum(axis=0)
@@ -250,10 +249,9 @@ class HiddenMarkovModel:
         return self.normals
 
 
-HMM = HiddenMarkovModel(num_states=20)
+HMM = HiddenMarkovModel(num_states=50)
 HMM.fit_hmm(event_data)
 plt.plot(HMM.marginals)
 plt.show()
-HMM.marginal_likelihood(event_data[1:3])
 
 

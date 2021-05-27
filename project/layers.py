@@ -142,7 +142,7 @@ class LocationScaleMixture(Layer):
         )
         return mixture
 
-
+# TODO: Add new HMM class
 class HiddenMarkovModel(Layer):
     def __init__(self,
                  number_states, forecast_length,

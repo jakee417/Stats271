@@ -13,8 +13,10 @@ https://keras.io/examples/generative/vae/
 https://github.com/francois-meyer/time2vec
 """
 
+
 class LstmRnn(tf.keras.Model):
     """Implements a Probabilistic Lstm Rnn with embeddings and variational layers"""
+
     def __init__(self,
                  lstm_units=32,
                  t2v_units=None,
@@ -22,7 +24,8 @@ class LstmRnn(tf.keras.Model):
                  dense_cells=1,
                  latent_dim=2,
                  beta=1,
-                 distribution=None):
+                 distribution=None,
+                 time_index=None):
         super().__init__()
         # Member attributes
         self.out_steps = out_steps
@@ -35,7 +38,7 @@ class LstmRnn(tf.keras.Model):
         self.latent_dim = latent_dim
         # http://www.matthey.me/pdf/betavae_iclr_2017.pdf
         self.beta = beta
-        # TODO: Add dropout
+        self.time_index = time_index
 
         # Metrics
         self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
@@ -67,7 +70,6 @@ class LstmRnn(tf.keras.Model):
                 lambda t: LocationScaleMixture()(t)
             )
         elif distribution == 'hiddenmarkovmodel':
-            # FixMe: output shape not working
             number_states = 15
             self.params = (
                     2 * number_states
@@ -92,7 +94,6 @@ class LstmRnn(tf.keras.Model):
 
     @staticmethod
     def negative_log_likelihood(y_pred, y_true):
-        # TODO: Put prior on reconstruction loss
         return -y_pred.log_prob(y_true)
 
     def warmup(self, inputs):
@@ -100,7 +101,9 @@ class LstmRnn(tf.keras.Model):
         # inputs.shape => (batch, time, features)
         # x.shape => (batch, lstm_units)
         if self.t2v_units:
-            x = self.T2V(inputs)
+            # parse time feature for T2V
+            t = self.T2V(inputs[..., self.time_index:self.time_index + 1])
+            x = tf.keras.layers.Concatenate()([inputs, t])
             x, *state = self.lstm_rnn(x)
         else:
             x, *state = self.lstm_rnn(inputs)
@@ -113,14 +116,19 @@ class LstmRnn(tf.keras.Model):
     def call(self, inputs, training=None, encoding=False):
         # encoder
         prediction, state = self.warmup(inputs)
+
+        if encoding and not self.latent_dim:
+            return None
+
         if self.latent_dim:
             self.z_mean = self.dense_latent(prediction)
             self.z_log_var = self.dense_latent(prediction)
             prediction = self.sampling([self.z_mean, self.z_log_var])
+            # shortstop encoding and return
             if encoding:
                 return prediction
-        # transform dimensions back to size of self.params
-        prediction = self.dense_unbottleneck(prediction)
+            # transform dimensions back to size of self.params
+            prediction = self.dense_unbottleneck(prediction)
 
         # decoder
         predictions = [prediction]
@@ -165,28 +173,34 @@ class LstmRnn(tf.keras.Model):
             reconstruction = self.negative_log_likelihood(y_pred, y)
             # https://keras.io/examples/generative/vae/
             # https://arxiv.org/pdf/1312.6114.pdf
-            kl_loss = -0.5 * (1 + self.z_log_var
-                              - tf.square(self.z_mean)
-                              - tf.exp(self.z_log_var))
-            kl_loss = self.beta * tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
-            total_loss = reconstruction + kl_loss
-
+            if self.latent_dim:
+                kl_loss = -0.5 * (1 + self.z_log_var
+                                  - tf.square(self.z_mean)
+                                  - tf.exp(self.z_log_var))
+                kl_loss = self.beta * tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+                total_loss = reconstruction + kl_loss
+            else:
+                total_loss = reconstruction
         # Compute gradients
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(total_loss, trainable_vars)
         # Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
         # Update metrics (includes the metric that tracks the loss)
-        self.compiled_metrics.update_state(y, y_pred)
         self.total_loss_tracker.update_state(total_loss)
-        self.reconstruction_loss_tracker.update_state(reconstruction)
-        self.kl_loss_tracker.update_state(kl_loss)
-        # Return a dict mapping metric names to current value
-        return {
-            "loss": self.total_loss_tracker.result(),
-            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-            "kl_loss": self.kl_loss_tracker.result(),
-        }
+        if self.latent_dim:
+            self.reconstruction_loss_tracker.update_state(reconstruction)
+            self.kl_loss_tracker.update_state(kl_loss)
+            # Return a dict mapping metric names to current value
+            return {
+                "loss": self.total_loss_tracker.result(),
+                "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+                "kl_loss": self.kl_loss_tracker.result(),
+            }
+        else:
+            return {
+                "loss": self.total_loss_tracker.result()
+            }
 
     def test_step(self, data):
         # Unpack the data
@@ -196,21 +210,30 @@ class LstmRnn(tf.keras.Model):
         # Updates the metrics tracking the loss
         reconstruction = self.negative_log_likelihood(y_pred, y)
         # https://keras.io/examples/generative/vae/
-        kl_loss = -0.5 * (1 + self.z_log_var
-                          - tf.square(self.z_mean)
-                          - tf.exp(self.z_log_var))
-        kl_loss = self.beta * tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
-        total_loss = reconstruction + kl_loss
-        self.compiled_metrics.update_state(y, y_pred)
+        if self.latent_dim:
+            kl_loss = -0.5 * (1 + self.z_log_var
+                              - tf.square(self.z_mean)
+                              - tf.exp(self.z_log_var))
+            kl_loss = self.beta * tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+            total_loss = reconstruction + kl_loss
+        else:
+            total_loss = reconstruction
+        # Update metrics (includes the metric that tracks the loss)
         self.total_loss_tracker.update_state(total_loss)
-        self.reconstruction_loss_tracker.update_state(reconstruction)
-        self.kl_loss_tracker.update_state(kl_loss)
-        # Return a dict mapping metric names to current value
-        return {
-            "loss": self.total_loss_tracker.result(),
-            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-            "kl_loss": self.kl_loss_tracker.result(),
-        }
+
+        if self.latent_dim:
+            self.reconstruction_loss_tracker.update_state(reconstruction)
+            self.kl_loss_tracker.update_state(kl_loss)
+            # Return a dict mapping metric names to current value
+            return {
+                "loss": self.total_loss_tracker.result(),
+                "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+                "kl_loss": self.kl_loss_tracker.result(),
+            }
+        else:
+            return {
+                "loss": self.total_loss_tracker.result()
+            }
 
     def compile_and_fit(self,
                         model,
@@ -220,11 +243,11 @@ class LstmRnn(tf.keras.Model):
                         patience=2,
                         max_epochs=20):
         cp = [tf.keras.callbacks.EarlyStopping(
-                monitor='val_loss',
-                patience=patience,
-                mode='min',
-                restore_best_weights=True
-            )]
+            monitor='val_loss',
+            patience=patience,
+            mode='min',
+            restore_best_weights=True
+        )]
         if checkpoint_path:
             cp.append(tf.keras.callbacks.ModelCheckpoint(
                 filepath=checkpoint_path,

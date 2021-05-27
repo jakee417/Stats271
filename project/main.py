@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from LstmRnn import LstmRnn
 import json
 import time
+import pprint
+pp = pprint.PrettyPrinter(indent=4)
 
 
 def run(fname,
@@ -36,6 +38,7 @@ def run(fname,
 
     # multi_window.plot_splits(feedback_model)
     print(multi_window)
+    time_index = multi_window.column_indices['timestamp']
 
     feedback_model = LstmRnn(lstm_units=hidden_units,
                              t2v_units=t2v_units,
@@ -43,7 +46,8 @@ def run(fname,
                              dense_cells=dense_cells,
                              distribution=distribution,
                              latent_dim=latent_dim,
-                             beta=beta)
+                             beta=beta,
+                             time_index=time_index)
 
     history = feedback_model.compile_and_fit(model=feedback_model,
                                              window=multi_window,
@@ -67,6 +71,7 @@ def run(fname,
         samples = 500
 
     # plot forecast plots
+    '''
     multi_window.plot(feedback_model,
                       save_path=train_save_img,
                       max_subplots=3,
@@ -78,6 +83,7 @@ def run(fname,
                       max_subplots=3,
                       samples=samples,
                       mode='test')
+    '''
 
     test_forecast = multi_window.forecast(
         model=feedback_model,
@@ -95,8 +101,10 @@ def run(fname,
     post_checks = multi_window.plot_posterior_predictive_check(forecasts,
                                                                post_check_img)
 
+    '''
     multi_window.plot_correlations(train_forecast, latent_img)
     multi_window.plot_correlations(test_forecast, latent_img)
+    '''
 
     multi_window.plot_global_forecast(
         test_forecast,
@@ -130,7 +138,7 @@ def run(fname,
     performance['val'] = feedback_model.evaluate(multi_window.val)
     performance['test'] = feedback_model.evaluate(multi_window.test, verbose=0)
     performance.update(post_checks)
-    print(performance)
+    pp.pprint(performance)
 
     # cache performance
     out_file = open(f'metrics/{distribution}.json', "w")
@@ -142,15 +150,15 @@ if __name__ == '__main__':
     bitcoin = 'data/bitcoin_query.csv'
     fname = bitcoin
     distribution = 'normal'
-    hidden_units = 64
-    t2v_units = 64
+    hidden_units = 8
+    t2v_units = 8
     dense_cells = 1
     resample = None
     input_width = 90
     out_steps = 30
-    max_epochs = 10
-    patience = 2
-    latent_dim = 2
+    max_epochs = 40
+    patience = 3
+    latent_dim = None
     beta = 1
 
     run(fname,
