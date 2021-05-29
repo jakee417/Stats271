@@ -17,72 +17,90 @@ https://github.com/francois-meyer/time2vec
 class LstmRnn(tf.keras.Model):
     """Implements a Probabilistic Lstm Rnn with embeddings and variational layers"""
 
-    def __init__(self,
-                 lstm_units=32,
-                 t2v_units=None,
-                 out_steps=24,
-                 dense_cells=1,
-                 latent_dim=2,
-                 beta=1,
-                 distribution=None,
-                 time_index=None):
+    def __init__(self, params):
         super().__init__()
         # Member attributes
-        self.out_steps = out_steps
-        self.lstm_units = lstm_units
-        self.t2v_units = t2v_units
-        self.distribution = distribution
-        self.dense_cells = dense_cells
+        self.out_steps = params['out_steps']
+        self.lstm_units = params['lstm_units']
+        self.t2v_units = params['t2v_units']
+        self.distribution = params['distribution']
+        self.dense_cells = params['dense_cells']
         # These will be parameters for our TFP layer
         self.params = None
-        self.latent_dim = latent_dim
+        self.latent_dim = params['latent_dim']
         # http://www.matthey.me/pdf/betavae_iclr_2017.pdf
-        self.beta = beta
-        self.time_index = time_index
+        self.beta = params['beta']
+        self.time_index = params['time_index']
+        self.l2_reg = tf.keras.regularizers.l2(params['regularization'])
+        self.initializer = tf.keras.initializers.RandomNormal(mean=0., stddev=0.01)
 
         # Metrics
         self.total_loss_tracker = tf.keras.metrics.Mean(name="total_loss")
         self.reconstruction_loss_tracker = tf.keras.metrics.Mean(name="reconstruction_loss")
         self.kl_loss_tracker = tf.keras.metrics.Mean(name="kl_loss")
+        self.regularization_tracker = tf.keras.metrics.Mean(name='regularization_loss')
 
-        # TF Layers
-        self.lstm_cell_warmup = tf.keras.layers.LSTMCell(self.lstm_units)
-        self.lstm_cell = tf.keras.layers.LSTMCell(self.lstm_units)
-        self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True)
-        self.dense_1 = tf.keras.layers.Dense(self.lstm_units, activation='relu')
+        # TF Layers for RNN
+        self.lstm_cell_warmup = tf.keras.layers.LSTMCell(self.lstm_units, kernel_regularizer=self.l2_reg,
+                                                         recurrent_regularizer=self.l2_reg, name='lstm_warmup')
+        self.lstm_cell = tf.keras.layers.LSTMCell(self.lstm_units, kernel_regularizer=self.l2_reg,
+                                                  recurrent_regularizer=self.l2_reg, name='lstm_forecast')
+        self.lstm_rnn = tf.keras.layers.RNN(self.lstm_cell_warmup, return_state=True, name='rnn')
+
+        # Other TF Layers
+        self.dense_extras = tf.keras.layers.Dense(self.lstm_units, activation='relu', kernel_regularizer=self.l2_reg,
+                                                  kernel_initializer=self.initializer, name='dense_extra')
         if self.t2v_units:
             self.T2V = layers.T2V(self.t2v_units)
         if self.latent_dim:
             self.z_mean = None
             self.z_log_var = None
             self.sampling = layers.Sampling()
-            self.dense_latent = tf.keras.layers.Dense(self.latent_dim)
+            self.dense_mean_latent = tf.keras.layers.Dense(self.latent_dim, name='dense_z_mean')
+            self.dense_var_latent = tf.keras.layers.Dense(self.latent_dim, name='dense_z_log_var')
 
         # TFP Layers
-        if distribution == 'normal':
+        if self.distribution == 'normal':
             self.params = 2
             self.dist_lambda = layers.normal
             # self.dist_lambda = distributions.variational_normal
-        elif distribution == 'locationscalemix':
-            # [(Normal, 2), (Student t, 3), (laplace, 2), (logits, 3)]
+        elif self.distribution == 'poisson_approx':
+            self.params = 1
+            self.dist_lambda = layers.poisson_approximation
+        elif self.distribution == 'student_t':
+            self.params = 3
+            if params['min_df']:
+                self.min_df = params['min_df']
+            else:
+                self.min_df = 5.0
+            self.dist_lambda = layers.StudentT(self.min_df, name='student_t')
+        elif self.distribution == 'mix':
+            # [(Normal, 2), (Student t, 3), (Laplace, 2), (logits, 3)]
             self.params = 13
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: LocationScaleMixture()(t)
-            )
-        elif distribution == 'hiddenmarkovmodel':
-            number_states = 15
+            if params['min_df']:
+                self.min_df = params['min_df']
+            else:
+                self.min_df = 5.0
+            self.dist_lambda = layers.LocationScaleMixture(self.min_df)
+        elif self.distribution == 'hmm':
+            self.number_states = params['number_states']
             self.params = (
-                    2 * number_states
-                    + number_states
-                    + number_states ** 2
+                    2 * self.number_states
+                    + self.number_states
+                    + self.number_states ** 2
             )
-            self.dist_lambda = tfp.layers.DistributionLambda(
-                lambda t: HiddenMarkovModel(number_states=number_states,
-                                            forecast_length=out_steps)(t)
-            )
-        self.dense = tf.keras.layers.Dense(self.params)
-        if latent_dim:
-            self.dense_unbottleneck = tf.keras.layers.Dense(self.params)
+            self.dist_lambda = layers.HiddenMarkovModel(number_states=self.number_states,
+                                                        forecast_length=self.out_steps,
+                                                        name='hmm')
+        else:
+            raise Exception('Distribution not correct.')
+        self.dense = tf.keras.layers.Dense(self.params, activation='relu', kernel_regularizer=self.l2_reg,
+                                           kernel_initializer=self.initializer, name='dense_main')
+        if self.latent_dim:
+            self.dense_unbottleneck = tf.keras.layers.Dense(self.params, activation='relu',
+                                                            kernel_regularizer=self.l2_reg,
+                                                            kernel_initializer=self.initializer,
+                                                            name='dense_unbottleneck')
 
     @property
     def metrics(self):
@@ -104,12 +122,14 @@ class LstmRnn(tf.keras.Model):
             # parse time feature for T2V
             t = self.T2V(inputs[..., self.time_index:self.time_index + 1])
             x = tf.keras.layers.Concatenate()([inputs, t])
+            # x.shape => (batch, time, features + self.t2v_units)
             x, *state = self.lstm_rnn(x)
         else:
             x, *state = self.lstm_rnn(inputs)
         # predictions.shape => (batch, features)
-        for _ in range(self.dense_cells):
-            x = self.dense_1(x)
+        if self.dense_cells:
+            for _ in range(self.dense_cells):
+                x = self.dense_extras(x)
         prediction = self.dense(x)
         return prediction, state
 
@@ -121,8 +141,8 @@ class LstmRnn(tf.keras.Model):
             return None
 
         if self.latent_dim:
-            self.z_mean = self.dense_latent(prediction)
-            self.z_log_var = self.dense_latent(prediction)
+            self.z_mean = self.dense_mean_latent(prediction)
+            self.z_log_var = self.dense_var_latent(prediction)
             prediction = self.sampling([self.z_mean, self.z_log_var])
             # shortstop encoding and return
             if encoding:
@@ -143,8 +163,9 @@ class LstmRnn(tf.keras.Model):
                 training=training
             )
             # Convert the lstm output to a prediction.
-            for _ in range(self.dense_cells):
-                x = self.dense_1(x)
+            if self.dense_cells:
+                for _ in range(self.dense_cells):
+                    x = self.dense_extras(x)
             prediction = self.dense(x)
 
             # Add the prediction to the output
@@ -157,7 +178,7 @@ class LstmRnn(tf.keras.Model):
         # convert rates to distribution layer
         if self.distribution:
             # predictions.shape => (batch, time, params)
-            if self.distribution == 'hiddenmarkovmodel':
+            if self.distribution == 'hmm':
                 # predictions.shape => (batch, time)
                 predictions = predictions[:, 0, :]
             predictions = self.dist_lambda(predictions)
@@ -166,9 +187,15 @@ class LstmRnn(tf.keras.Model):
     def train_step(self, data):
         # Unpack the data
         x, y = data
+
+        # ensure y.shape => (batch, time) for hmm
+        if self.distribution == 'hmm':
+            y = y[..., 0]
+
         with tf.GradientTape() as tape:
             # Forward pass
             y_pred = self(x, training=True)
+            regularization_loss = tf.add_n(self.losses)
             # Compute the loss value
             reconstruction = self.negative_log_likelihood(y_pred, y)
             # https://keras.io/examples/generative/vae/
@@ -178,36 +205,44 @@ class LstmRnn(tf.keras.Model):
                                   - tf.square(self.z_mean)
                                   - tf.exp(self.z_log_var))
                 kl_loss = self.beta * tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
-                total_loss = reconstruction + kl_loss
+                total_loss = reconstruction + kl_loss + regularization_loss
             else:
-                total_loss = reconstruction
+                total_loss = reconstruction + regularization_loss
         # Compute gradients
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(total_loss, trainable_vars)
         # Update weights
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
         # Update metrics (includes the metric that tracks the loss)
         self.total_loss_tracker.update_state(total_loss)
+        self.reconstruction_loss_tracker.update_state(reconstruction)
+        self.regularization_tracker.update_state(regularization_loss)
+        loss_tracker = {
+            "loss": self.total_loss_tracker.result(),
+            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+            "regularization_loss": self.regularization_tracker.result()
+        }
         if self.latent_dim:
-            self.reconstruction_loss_tracker.update_state(reconstruction)
             self.kl_loss_tracker.update_state(kl_loss)
-            # Return a dict mapping metric names to current value
-            return {
-                "loss": self.total_loss_tracker.result(),
-                "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-                "kl_loss": self.kl_loss_tracker.result(),
-            }
-        else:
-            return {
-                "loss": self.total_loss_tracker.result()
-            }
+            loss_tracker.update({
+                "kl_loss": self.kl_loss_tracker.result()
+            })
+        # Return a dict mapping metric names to current value
+        return loss_tracker
 
     def test_step(self, data):
         # Unpack the data
         x, y = data
+
+        # ensure y.shape => (batch, time) for hmm
+        if self.distribution == 'hmm':
+            y = y[..., 0]
+
         # Compute predictions
         y_pred = self(x, training=False)
         # Updates the metrics tracking the loss
+        regularization_loss = tf.add_n(self.losses)
         reconstruction = self.negative_log_likelihood(y_pred, y)
         # https://keras.io/examples/generative/vae/
         if self.latent_dim:
@@ -220,20 +255,20 @@ class LstmRnn(tf.keras.Model):
             total_loss = reconstruction
         # Update metrics (includes the metric that tracks the loss)
         self.total_loss_tracker.update_state(total_loss)
-
+        self.reconstruction_loss_tracker.update_state(reconstruction)
+        self.regularization_tracker.update_state(regularization_loss)
+        loss_tracker = {
+            "loss": self.total_loss_tracker.result(),
+            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+            "regularization_loss": self.regularization_tracker.result()
+        }
         if self.latent_dim:
-            self.reconstruction_loss_tracker.update_state(reconstruction)
             self.kl_loss_tracker.update_state(kl_loss)
-            # Return a dict mapping metric names to current value
-            return {
-                "loss": self.total_loss_tracker.result(),
-                "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-                "kl_loss": self.kl_loss_tracker.result(),
-            }
-        else:
-            return {
-                "loss": self.total_loss_tracker.result()
-            }
+            loss_tracker.update({
+                "kl_loss": self.kl_loss_tracker.result()
+            })
+        # Return a dict mapping metric names to current value
+        return loss_tracker
 
     def compile_and_fit(self,
                         model,
@@ -244,16 +279,22 @@ class LstmRnn(tf.keras.Model):
                         max_epochs=20):
         cp = [tf.keras.callbacks.EarlyStopping(
             monitor='val_loss',
-            patience=patience,
+            patience=patience * 2,
             mode='min',
-            restore_best_weights=True
+            restore_best_weights=True,
+            verbose=1
+        ), tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_loss', factor=0.1, patience=patience, verbose=1,
+            mode='auto', min_delta=0.01, cooldown=0, min_lr=0
         )]
+
         if checkpoint_path:
             cp.append(tf.keras.callbacks.ModelCheckpoint(
                 filepath=checkpoint_path,
                 save_weights_only=True,
                 verbose=1
             ))
+
         model.compile(optimizer=tf.optimizers.Adam())
         history = model.fit(window.train,
                             epochs=max_epochs,
