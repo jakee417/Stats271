@@ -1,25 +1,37 @@
 {
-      "time": 422.0961458683014,
-      "input_width": 90,
-      "out_steps": 30,
+      "time": 836.6336555480957,
+      "input_width": 120,
+      "out_steps": 24,
       "resample": null,
       "hidden_units": 8,
       "t2v_units": 8,
       "dense_cells": 1,
-      "latent_dim": null,
+      "latent_dim": 2,
       "beta": 1,
       "train_size": 1591,
       "val_size": 452,
-      "test_size": 225,
+      "test_size": 224,
       "total_data": 72894,
       "distribution": "normal",
       "max_epochs": 40,
       "patience": 3,
-      "train": 0.5235236287117004,
-      "val": 1.4373756647109985,
-      "test": 1.5491355657577515,
-      "train_area_above": 0.9655884951408659,
-      "train_area_below": 0.8652586630018652,
-      "test_area_above": 1.0047222222222223,
-      "test_area_below": 0.691527777777778
+      "train": [
+            0.549396276473999,
+            0.0002211529790656641,
+            0.5496175289154053
+      ],
+      "val": [
+            1.5239653587341309,
+            0.0011200609151273966,
+            1.5250858068466187
+      ],
+      "test": [
+            1.640027403831482,
+            0.001067579141817987,
+            1.641093373298645
+      ],
+      "train_area_above": 0.36427168254591885,
+      "train_area_below": 1.456050486199784,
+      "test_area_above": 2.002022315202231,
+      "test_area_below": 2.253821478382148
 }

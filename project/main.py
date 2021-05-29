@@ -85,19 +85,27 @@ def run(fname,
                       mode='test')
     '''
 
-    test_forecast = multi_window.forecast(
-        model=feedback_model,
-        dataset_name='test',
-        samples=200
-    )
-
     train_forecast = multi_window.forecast(
         model=feedback_model,
         dataset_name='train',
         samples=200
     )
 
-    forecasts = [train_forecast, test_forecast]
+    val_forecast = multi_window.forecast(
+        model=feedback_model,
+        dataset_name='val',
+        samples=200
+    )
+
+    test_forecast = multi_window.forecast(
+        model=feedback_model,
+        dataset_name='test',
+        samples=200
+    )
+
+
+
+    forecasts = [train_forecast, test_forecast, val_forecast]
     post_checks = multi_window.plot_posterior_predictive_check(forecasts,
                                                                post_check_img)
 
@@ -107,12 +115,17 @@ def run(fname,
     '''
 
     multi_window.plot_global_forecast(
-        test_forecast,
+        train_forecast,
         save_path=global_save_img
     )
 
     multi_window.plot_global_forecast(
-        train_forecast,
+        val_forecast,
+        save_path=global_save_img
+    )
+
+    multi_window.plot_global_forecast(
+        test_forecast,
         save_path=global_save_img
     )
 
@@ -154,12 +167,12 @@ if __name__ == '__main__':
     t2v_units = 8
     dense_cells = 1
     resample = None
-    input_width = 90
-    out_steps = 30
+    input_width = 96
+    out_steps = 24
     max_epochs = 40
     patience = 3
-    latent_dim = None
-    beta = 1
+    latent_dim = 2
+    beta = 2
 
     run(fname,
         distribution,

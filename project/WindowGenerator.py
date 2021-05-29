@@ -351,8 +351,6 @@ class WindowGenerator():
                          alpha=0.2,
                          label=f'Warmup Period')
 
-        # TODO: Make scatter plots look better
-
         # Plot resulting credible intervals
         plt.fill_between(x=ind_overlapping_index,
                          y1=lower_90,
@@ -366,7 +364,7 @@ class WindowGenerator():
                     y=original,
                     label='All Labels',
                     c='black',
-                    s=3)
+                    s=2)
 
         '''
         plt.plot(not_anomalies,
@@ -379,14 +377,13 @@ class WindowGenerator():
                     y=not_anomalies,
                     label='Labels within 90%',
                     c='green',
-                    s=5)
+                    s=3)
 
         plt.scatter(x=anomalies.index,
                     y=anomalies,
-                    edgecolors='k',
                     label='Anomalies outside 90%',
                     c='red',
-                    s=10)
+                    s=3)
 
         # Finally plot the mean
         plt.plot(ind_overlapping_index,
@@ -407,7 +404,6 @@ class WindowGenerator():
     @staticmethod
     def plot_posterior_predictive_check(forecasts, save_path):
         """Plot a posterior predictive check given forecasts"""
-        # TODO: Break this up into upper and lower
         uppers = np.arange(55, 96, 1)
         lowers = np.arange(45, 4, -1)
         ideal = ((100 - uppers) + lowers) / 100
