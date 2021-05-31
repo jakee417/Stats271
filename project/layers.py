@@ -16,10 +16,19 @@ normal = tfp.layers.DistributionLambda(
     name='normal'
 )
 
+laplace = tfp.layers.DistributionLambda(
+    lambda t: tfd.Laplace(
+        loc=t[..., :1],
+        scale=1e-3 + tf.math.softplus(0.05 * t[..., 1:]),
+        name='laplace'
+    ),
+    name='laplace'
+)
+
 # https://en.wikipedia.org/wiki/Poisson_distribution#Related_distributions
 poisson_approximation = tfp.layers.DistributionLambda(
     lambda t: tfd.Normal(
-        loc=1e-3 + tf.math.softplus(0.05 * t),
+        loc=t,
         scale=tf.math.sqrt(1e-3 + tf.math.softplus(0.05 * t)),
         name='poisson_approx'
     ),
@@ -117,7 +126,7 @@ class LocationScaleMixture(tfp.layers.DistributionLambda):
     def __init__(self, min_df=1.0, **kwargs):
         super(LocationScaleMixture, self).__init__(
             lambda t: LocationScaleMixture.new(min_df, t),
-            ** kwargs
+            **kwargs
         )
         self.min_df = min_df
 
@@ -125,18 +134,23 @@ class LocationScaleMixture(tfp.layers.DistributionLambda):
     def new(min_df, inputs):
         """Builds a mixture model based off four loc-scale distributions"""
         # inputs.shape => (batch, time, params=13)
-        assert inputs.shape[2] == 13
+        assert inputs.shape[2] == 11
         normal_loc = inputs[..., 0:1]
         normal_scale = 1e-3 + tf.math.softplus(0.05 * inputs[..., 1:2])
-        # Limit the tails of the Student t
+        # Limit the tails of the Student-t
         student_df = min_df + tf.math.softplus(0.05 * inputs[..., 2:3])
         student_loc = inputs[..., 3:4]
-        student_scale = 1e-3 + tf.math.softplus(inputs[..., 4:5])
+        student_scale = 1e-3 + tf.math.softplus(0.05 * inputs[..., 4:5])
         laplace_loc = inputs[..., 5:6]
         laplace_scale = 1e-3 + tf.math.softplus(0.05 * inputs[..., 6:7])
-        uniform_low = inputs[..., 7:8]
-        uniform_high = inputs[..., 8:9]
-        logits = tf.math.softplus(inputs[..., 9:])
+        logits = inputs[...,8:]
+        #concentration = 1e-3 + tf.math.softplus(inputs[..., 9:])
+
+        # prior = tfd.Dirichlet(
+        #     concentration=concentration
+        # )
+        #
+        # logits = tf.math.log(prior.sample())
 
         # sum_i p_i = 1
         # Pr(X ~ D_i(...)) = p_i
@@ -167,19 +181,12 @@ class LocationScaleMixture(tfp.layers.DistributionLambda):
             name='laplace_component'
         )
 
-        uniform = tfd.Uniform(
-            low=uniform_low,
-            high=uniform_high,
-            name='uniform_component'
-        )
-
         return tfd.Mixture(
             cat=cat,
             components=[
                 normal,
                 studentT,
-                laplace,
-                uniform
+                laplace
             ],
             name='location_scale_mixture_model'
         )

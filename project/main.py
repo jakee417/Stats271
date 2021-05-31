@@ -152,22 +152,22 @@ if __name__ == '__main__':
     etherium = 'data/ethereum.csv'
     params = dict(
         fname=bitcoin,
-        distribution='normal',
-        lstm_units=64,
-        t2v_units=32,
-        dense_cells=1,
+        distribution='laplace',
+        lstm_units=32,
+        t2v_units=8,
+        dense_cells=None,
         resample=None,
-        input_width=96,
+        input_width=24,
         label_width=24,
-        shift=24,
+        shift=0,
         max_epochs=40,
-        patience=2,
+        patience=1,
         latent_dim=2,
         beta=1,
         min_df=2.0,
-        number_states=30,
-        batch_size=128,
-        regularization=None
+        number_states=10,
+        batch_size=256,
+        regularization=0.01
     )
 
     run(params)

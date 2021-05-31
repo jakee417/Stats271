@@ -70,13 +70,16 @@ class LstmRnn(tf.keras.Model):
             self.dist_lambda = layers.poisson_approximation
         elif self.distribution == 'student_t':
             self.params = 3
-            self.min_df = params['min_df'] if params['mind_df'] else 1.0
+            self.min_df = params['min_df'] if params['min_df'] else 1.0
             self.dist_lambda = layers.StudentT(self.min_df, name='student_t')
+        elif self.distribution == 'laplace':
+            self.params = 2
+            self.dist_lambda = layers.laplace
         elif self.distribution == 'mix':
             # [(Normal, 2), (Student t, 3), (Laplace, 2), (logits, 3)]
-            self.params = 13
-            self.min_df = params['min_df'] if params['mind_df'] else 1.0
-            self.dist_lambda = layers.LocationScaleMixture(self.min_df)
+            self.params = 11
+            self.min_df = params['min_df'] if params['min_df'] else 1.0
+            self.dist_lambda = layers.LocationScaleMixture(self.min_df, name='mix')
         elif self.distribution == 'hmm':
             self.number_states = params['number_states']
             self.params = (
@@ -114,14 +117,15 @@ class LstmRnn(tf.keras.Model):
             self.kl_loss_tracker,
         ]
 
-    @staticmethod
-    def negative_log_likelihood(y_pred, y_true):
-        # return -y_pred.log_prob(y_true)
-        return -tf.reduce_mean(
-            tf.reduce_sum(
-                y_pred.log_prob(y_true), axis=1
+    def negative_log_likelihood(self, y_pred, y_true):
+        if self.distribution == 'hmm':
+            return -y_pred.log_prob(y_true)
+        else:
+            return -tf.reduce_mean(
+                tf.reduce_sum(
+                    y_pred.log_prob(y_true), axis=1
+                )
             )
-        )
 
     @staticmethod
     def kl_loss(z_log_var, z_mean, beta):
