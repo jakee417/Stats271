@@ -1,0 +1,53 @@
+{
+      "time": 151.26607608795166,
+      "now": "30_05_2021_21_27_45",
+      "fname": "data/bitcoin_query.csv",
+      "distribution": "normal",
+      "lstm_units": 8,
+      "t2v_units": 8,
+      "dense_cells": 1,
+      "resample": null,
+      "input_width": 96,
+      "label_width": 24,
+      "shift": 24,
+      "max_epochs": 40,
+      "patience": 1,
+      "latent_dim": 2,
+      "beta": 1,
+      "min_df": 2.0,
+      "number_states": 30,
+      "batch_size": 128,
+      "regularization": 0.001,
+      "time_index": 1,
+      "train_size": 398,
+      "val_size": 113,
+      "test_size": 57,
+      "total_data": 72894,
+      "train": [
+            31.735084533691406,
+            0.000997306196950376,
+            31.801807403564453,
+            0.05693220719695091
+      ],
+      "val": [
+            49.044105529785156,
+            0.0031284885480999947,
+            49.11296463012695,
+            0.057256072759628296
+      ],
+      "test": [
+            51.92962646484375,
+            0.002217526314780116,
+            51.99756622314453,
+            0.05741054564714432
+      ],
+      "train_area_above": 1.0342486598990754,
+      "train_area_below": 4.329885330558227,
+      "train_total_area": 5.36,
+      "test_area_above": 14.363983875451767,
+      "test_area_below": 9.506741729218795,
+      "test_total_area": 23.87,
+      "val_area_above": 13.692346198991922,
+      "val_area_below": 9.66586687840917,
+      "val_total_area": 23.36
+}

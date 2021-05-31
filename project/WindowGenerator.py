@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import time
+import itertools
 
 
 class WindowGenerator():
@@ -139,10 +141,6 @@ class WindowGenerator():
         return result
 
     @property
-    def fig_size(self):
-        return (12, 8)
-
-    @property
     def train_example(self):
         """Get and cache an example batch of `inputs, labels` for plotting."""
         result = getattr(self, '_train_example', None)
@@ -152,6 +150,10 @@ class WindowGenerator():
             # And cache it for next time
             self._train_example = result
         return result
+
+    @property
+    def fig_size(self):
+        return (12, 8)
 
     def rescale(self, x):
         return (x.numpy() * self.train_std[0]) + self.train_mean[0]
@@ -232,18 +234,17 @@ class WindowGenerator():
             plt.savefig(save_path)
         plt.show()
 
-    def forecast(self,
-                 model,
-                 dataset_name='test',
-                 samples=500,
-                 plot_col='num_transactions'):
+    def forecast(self, model, dataset_name='test',
+                 samples=500, plot_col='num_transactions'):
         """Forecast future values using a trained model over an entire dataset"""
         if dataset_name == 'train':
             dataset = self.train_df
         elif dataset_name == 'val':
             dataset = self.val_df
-        else:
+        elif dataset_name == 'test':
             dataset = self.test_df
+        else:
+            raise Exception('dataset_name is either train, val, or test.')
 
         original = (dataset[self.label_columns[0]]
                     * self.train_std[0]
@@ -252,8 +253,8 @@ class WindowGenerator():
         # Get indices of our forecast windows that are similar to how we created our data
         ind = self.rolling_window(np.arange(len(dataset.index)), self.total_window_size)
 
-        # This is the overlapping code
-        ind_overlapping = ind[:, self.input_width:].flatten()
+        # slice just the forecasted indices
+        ind_overlapping = ind[:, -self.label_width:].flatten()
         ind_overlapping_unique = np.unique(ind_overlapping)
         ind_overlapping_index = dataset.index[ind_overlapping_unique]
 
@@ -263,8 +264,11 @@ class WindowGenerator():
         # Make forecasts for windows from unshuffled dataset
         unshuffled = self.make_dataset(data=dataset, shuffle=False)
 
+        print(f'Sampling forecast values: {dataset_name}')
+        tic = time.time()
         res_samples_l = []
         zs = []
+
         # Loop through datasets making forecasts
         # and sample from each overlapping window's forecast
         for element in unshuffled.enumerate(start=0):
@@ -278,12 +282,14 @@ class WindowGenerator():
             assert res_samples.shape == (samples, batch_size, self.label_width, 1)
 
             # extract z's
-            #zs.append(model(data, encoding=True))
+            zs.append(model(data, encoding=True))
 
             # res_samples => (samples, batch, time, features)
             res_samples = res_samples[..., label_col_index]
             res_samples = self.rescale(res_samples)
             res_samples_l.append(res_samples)
+
+        print(f'Sampling complete: {time.time() - tic}')
 
         # Concatenate and separate (samples) from (time, features)
         all_samples = np.concatenate(res_samples_l, axis=1)
@@ -300,6 +306,18 @@ class WindowGenerator():
         # grid to compute model checking
         uppers = np.arange(55, 96, 1)
         lowers = np.arange(45, 4, -1)
+
+        # sorted_indices = np.argsort(ind_overlapping)
+        # sorted_ind_overlapping = np.sort(ind_overlapping)
+        # sorted_all_samples = all_samples[:, sorted_indices]
+        # changepoints = np.where(sorted_ind_overlapping[:-1] != sorted_ind_overlapping[1:])[0] + 1
+        # split_list = np.array_split(sorted_all_samples, changepoints, axis=1)
+        # split_list_filled = np.array(list(itertools.zip_longest(*split_list, fillvalue=np.nan))).T
+        # mean = np.nanmean(split_list_filled, axis=1)
+        # upper = np.nanpercentile(split_list_filled, uppers, axis=1)
+        # lower = np.nanmean(split_list_filled, lowers, axis=1)
+
+        # TODO: rewrite this
         for index in ind_overlapping_unique:
             sub_samples = all_samples[:, ind_overlapping == index]
             upper_l.append(np.percentile(sub_samples, uppers))
@@ -308,6 +326,8 @@ class WindowGenerator():
         mean = np.array(mean_l)
         upper = np.array(upper_l)
         lower = np.array(lower_l)
+
+        print(f'Assign samples time index: {time.time() - tic}')
 
         # extract 90 percentiles for plotting
         upper_90 = upper[:, -1]

@@ -16,6 +16,7 @@ def run(params):
     checkpoint_path = f'checkpoints/{distribution}.ckpt'
     save_path = f'saved/LstmRnn{distribution}'
     train_save_img = f'figures/{now}_{distribution}_train_lstm_rnn.jpg'
+    val_save_img = f'figures/{now}_{distribution}_val_lstm_rnn.jpg'
     test_save_img = f'figures/{now}_{distribution}_test_lstm_rnn.jpg'
     global_train_img = f'figures/{now}_train_{distribution}_global_lstm_rnn.jpg'
     global_val_img = f'figures/{now}_val_{distribution}_global_lstm_rnn.jpg'
@@ -28,8 +29,8 @@ def run(params):
 
     multi_window = WindowGenerator(params['fname'],
                                    input_width=params['input_width'],
-                                   label_width=params['out_steps'],
-                                   shift=params['out_steps'],
+                                   label_width=params['label_width'],
+                                   shift=params['shift'],
                                    label_columns=['num_transactions'],
                                    resample_frequency=params['resample'],
                                    standardize=True,
@@ -70,6 +71,12 @@ def run(params):
     #                   max_subplots=3,
     #                   samples=samples,
     #                   mode='train')
+    #
+    # multi_window.plot(feedback_model,
+    #                   save_path=cal_save_img,
+    #                   max_subplots=3,
+    #                   samples=samples,
+    #                   mode='val')
     #
     # multi_window.plot(feedback_model,
     #                   save_path=test_save_img,
@@ -130,7 +137,7 @@ def run(params):
     performance['total_data'] = len(multi_window.df)
     performance['train'] = feedback_model.evaluate(multi_window.train)
     performance['val'] = feedback_model.evaluate(multi_window.val)
-    performance['test'] = feedback_model.evaluate(multi_window.test, verbose=0)
+    performance['test'] = feedback_model.evaluate(multi_window.test)
     performance.update(post_checks)
     pp.pprint(performance)
 
@@ -146,20 +153,21 @@ if __name__ == '__main__':
     params = dict(
         fname=bitcoin,
         distribution='normal',
-        lstm_units=32,
+        lstm_units=64,
         t2v_units=32,
-        dense_cells=2,
+        dense_cells=1,
         resample=None,
         input_width=96,
-        out_steps=24,
+        label_width=24,
+        shift=24,
         max_epochs=40,
-        patience=3,
+        patience=2,
         latent_dim=2,
         beta=1,
         min_df=2.0,
         number_states=30,
-        batch_size=256,
-        regularization=0.00001
+        batch_size=128,
+        regularization=None
     )
 
     run(params)
