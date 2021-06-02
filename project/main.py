@@ -66,11 +66,11 @@ def run(params):
         samples = 200
 
     # plot forecast plots
-    # multi_window.plot(feedback_model,
-    #                   save_path=train_save_img,
-    #                   max_subplots=3,
-    #                   samples=samples,
-    #                   mode='train')
+    multi_window.plot(feedback_model,
+                      save_path=train_save_img,
+                      max_subplots=3,
+                      samples=samples,
+                      mode='train')
     #
     # multi_window.plot(feedback_model,
     #                   save_path=cal_save_img,
@@ -84,32 +84,34 @@ def run(params):
     #                   samples=samples,
     #                   mode='test')
 
+    forecasts = []
     train_forecast = multi_window.forecast(
         model=feedback_model,
         dataset_name='train',
         samples=samples
     )
+    forecasts.append(train_forecast)
 
     val_forecast = multi_window.forecast(
         model=feedback_model,
         dataset_name='val',
         samples=samples
     )
+    forecasts.append(val_forecast)
 
     test_forecast = multi_window.forecast(
         model=feedback_model,
         dataset_name='test',
         samples=samples
     )
+    forecasts.append(test_forecast)
 
-    forecasts = [train_forecast, test_forecast, val_forecast]
     post_checks = multi_window.plot_posterior_predictive_check(forecasts,
                                                                post_check_img)
 
-    '''
-    multi_window.plot_correlations(train_forecast, train_correlation_img)
-    multi_window.plot_correlations(test_forecast, test_correlation_img)
-    '''
+    # multi_window.plot_correlations(train_forecast, train_correlation_img)
+    # multi_window.plot_correlations(test_forecast, test_correlation_img)
+
 
     multi_window.plot_global_forecast(
         train_forecast,
@@ -152,16 +154,16 @@ if __name__ == '__main__':
     etherium = 'data/ethereum.csv'
     params = dict(
         fname=bitcoin,
-        distribution='laplace',
+        distribution='normal',
         lstm_units=32,
         t2v_units=8,
         dense_cells=None,
         resample=None,
-        input_width=24,
+        input_width=96,
         label_width=24,
-        shift=0,
+        shift=24,
         max_epochs=40,
-        patience=1,
+        patience=2,
         latent_dim=2,
         beta=1,
         min_df=2.0,
